@@ -1,0 +1,692 @@
+basePath: /v1
+definitions:
+  dto.AccountResponse:
+    properties:
+      balance:
+        description: Adicionaremos a lógica para calcular isso depois
+        type: number
+      created_at:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      type:
+        $ref: '#/definitions/model.AccountType'
+      updated_at:
+        type: string
+    type: object
+  dto.CategoryRequest:
+    properties:
+      name:
+        minLength: 2
+        type: string
+    required:
+    - name
+    type: object
+  dto.CategoryResponse:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+    type: object
+  dto.CreateAccountRequest:
+    properties:
+      name:
+        minLength: 2
+        type: string
+      type:
+        $ref: '#/definitions/model.AccountType'
+    required:
+    - name
+    - type
+    type: object
+  dto.CreateAccountResponse:
+    properties:
+      id:
+        type: integer
+    type: object
+  dto.CreateTransactionRequest:
+    properties:
+      account_id:
+        type: integer
+      amount:
+        type: number
+      category_id:
+        description: Opcional
+        type: integer
+      date:
+        type: string
+      description:
+        type: string
+      destination_account_id:
+        description: Opcional, mas necessário para transferências
+        type: integer
+      type:
+        $ref: '#/definitions/model.TransactionType'
+    required:
+    - account_id
+    - amount
+    - date
+    - description
+    - type
+    type: object
+  dto.CreateUserRequest:
+    properties:
+      email:
+        type: string
+      name:
+        minLength: 2
+        type: string
+      password:
+        minLength: 6
+        type: string
+    required:
+    - email
+    - name
+    - password
+    type: object
+  dto.ErrorResponse:
+    properties:
+      error:
+        description: A mensagem de erro descritiva.
+        example: a descrição do erro aparece aqui
+        type: string
+    type: object
+  dto.TransactionResponse:
+    properties:
+      account_id:
+        type: integer
+      account_name:
+        type: string
+      amount:
+        type: number
+      category_id:
+        type: integer
+      category_name:
+        type: string
+      created_at:
+        type: string
+      date:
+        type: string
+      description:
+        type: string
+      destination_account_id:
+        type: integer
+      id:
+        type: integer
+      type:
+        $ref: '#/definitions/model.TransactionType'
+    type: object
+  dto.UpdateAccountRequest:
+    properties:
+      name:
+        minLength: 2
+        type: string
+      type:
+        $ref: '#/definitions/model.AccountType'
+    required:
+    - name
+    - type
+    type: object
+  dto.UpdateTransactionRequest:
+    properties:
+      account_id:
+        type: integer
+      amount:
+        type: number
+      category_id:
+        type: integer
+      date:
+        type: string
+      description:
+        type: string
+    required:
+    - account_id
+    - amount
+    - date
+    - description
+    type: object
+  dto.UserResponse:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+    type: object
+  handlers.LoginRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  model.AccountType:
+    enum:
+    - checking
+    - savings
+    - credit_card
+    - investment
+    - cash
+    - other
+    type: string
+    x-enum-comments:
+      Cash: Dinheiro Físico
+      Checking: Conta Corrente
+      CreditCard: Cartão de Crédito
+      Investment: Investimento
+      Other: Outros
+      Savings: Poupança
+    x-enum-varnames:
+    - Checking
+    - Savings
+    - CreditCard
+    - Investment
+    - Cash
+    - Other
+  model.TransactionType:
+    enum:
+    - income
+    - expense
+    - transfer
+    type: string
+    x-enum-varnames:
+    - Income
+    - Expense
+    - Transfer
+host: localhost:8080
+info:
+  contact: {}
+  description: Esta é uma API para gerenciamento de finanças pessoais.
+  title: API do Sistema Financeiro
+  version: "1.0"
+paths:
+  /accounts:
+    get:
+      description: Retorna um array com todas as contas do usuário logado
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.AccountResponse'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Lista todas as contas do usuário
+      tags:
+      - accounts
+    post:
+      consumes:
+      - application/json
+      description: Adiciona uma nova conta financeira ao sistema do usuário logado
+      parameters:
+      - description: Dados da Conta para Criação
+        in: body
+        name: account
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateAccountRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.CreateAccountResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Cria uma nova conta
+      tags:
+      - accounts
+  /accounts/{id}:
+    delete:
+      description: Remove uma conta do sistema. Falhará se a conta tiver transações
+        associadas.
+      parameters:
+      - description: Id da Conta
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Deleta uma conta
+      tags:
+      - accounts
+    get:
+      description: Retorna os detalhes de uma única conta que pertença ao usuário
+        logado
+      parameters:
+      - description: Id da Conta
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AccountResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Busca uma conta pelo ID
+      tags:
+      - accounts
+    put:
+      consumes:
+      - application/json
+      description: Atualiza os detalhes de uma conta existente
+      parameters:
+      - description: Id da Conta
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Dados para Atualizar
+        in: body
+        name: account
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateAccountRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AccountResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Atualiza uma conta
+      tags:
+      - accounts
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Autentica o usuário e retorna um token JWT
+      parameters:
+      - description: Credenciais de Login
+        in: body
+        name: credentials
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Realiza o login do usuário
+      tags:
+      - auth
+  /categories:
+    get:
+      description: Retorna um array com todas as categorias do usuário logado
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.CategoryResponse'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: Lista todas as categorias do usuário
+      tags:
+      - categories
+    post:
+      consumes:
+      - application/json
+      description: Adiciona uma nova categoria financeira ao sistema
+      parameters:
+      - description: Dados da Conta
+        in: body
+        name: account
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CategoryRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.CategoryResponse'
+      security:
+      - BearerAuth: []
+      summary: Cria uma nova categoria
+      tags:
+      - categories
+  /categories/{id}:
+    delete:
+      description: Remove uma categoria do sistema
+      parameters:
+      - description: Id da Conta
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Deleta uma categoria
+      tags:
+      - categories
+    get:
+      description: Retorna os detalhes de uma única categoria
+      parameters:
+      - description: Id da Conta
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.CategoryResponse'
+      security:
+      - BearerAuth: []
+      summary: Busca uma categoria pelo ID
+      tags:
+      - categories
+    put:
+      consumes:
+      - application/json
+      description: Atualiza os detalhes de uma categoria existente
+      parameters:
+      - description: Id da Conta
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Dados para Atualizar
+        in: body
+        name: account
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CategoryResponse'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.CategoryResponse'
+      security:
+      - BearerAuth: []
+      summary: Atualiza uma categoria
+      tags:
+      - categories
+  /transactions:
+    get:
+      description: Retorna uma lista de todas as transações para o usuário logado
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.TransactionResponse'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Lista as transações do usuário
+      tags:
+      - transactions
+    post:
+      consumes:
+      - application/json
+      description: Adiciona uma nova transação ao sistema. Para transferências, o
+        campo destination_account_id é obrigatório.
+      parameters:
+      - description: Dados da Transação para Criar
+        in: body
+        name: transaction
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateTransactionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.TransactionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Cria uma nova transação
+      tags:
+      - transactions
+  /transactions/{id}:
+    delete:
+      description: Remove uma transação do sistema pelo seu ID
+      parameters:
+      - description: Id da Transação
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Deleta uma transação
+      tags:
+      - transactions
+    get:
+      description: Retorna os detalhes de uma única transação
+      parameters:
+      - description: Id da Transação
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.TransactionResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Busca uma transação pelo ID
+      tags:
+      - transactions
+    put:
+      consumes:
+      - application/json
+      description: Atualiza os detalhes de uma transação com base no seu ID
+      parameters:
+      - description: Id da Transação
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Dados para Atualizar
+        in: body
+        name: transaction
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateTransactionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.TransactionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Atualiza uma transação existente
+      tags:
+      - transactions
+  /users:
+    post:
+      consumes:
+      - application/json
+      description: Cria um novo usuário no sistema.
+      parameters:
+      - description: Dados do Usuário para Registro
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.UserResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Registra um novo usuário
+      tags:
+      - users
+  /users/me:
+    get:
+      description: Retorna os dados do usuário que está fazendo a requisição.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.UserResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Busca o perfil do usuário logado
+      tags:
+      - users
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
