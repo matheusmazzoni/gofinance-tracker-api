@@ -11,6 +11,7 @@ import (
 type CategoryRepository interface {
 	Create(ctx context.Context, ct model.Category) (int64, error)
 	GetById(ctx context.Context, id, userId int64) (*model.Category, error)
+	GetByName(ctx context.Context, name string, userId int64) (*model.Category, error)
 	ListByUserId(ctx context.Context, userId int64) ([]model.Category, error)
 	Update(ctx context.Context, ct model.Category) error
 	Delete(ctx context.Context, id, userId int64) error
@@ -42,6 +43,18 @@ func (r *pqCategoryRepository) GetById(ctx context.Context, id, userId int64) (*
 	var ct model.Category
 	query := `SELECT * FROM categories WHERE id = $1 AND user_id = $2`
 	err := r.db.GetContext(ctx, &ct, query, id, userId)
+	return &ct, err
+}
+
+func (r *pqCategoryRepository) GetByName(ctx context.Context, name string, userId int64) (*model.Category, error) {
+	var ct model.Category
+	// The query is simple and secure, filtering by both name and user ID.
+	// The UNIQUE constraint on (user_id, name) guarantees we get at most one row.
+	query := `SELECT * FROM categories WHERE name = $1 AND user_id = $2`
+
+	// GetContext is perfect here as we expect exactly one result.
+	// It will correctly return sql.ErrNoRows if the account is not found.
+	err := r.db.GetContext(ctx, &ct, query, name, userId)
 	return &ct, err
 }
 

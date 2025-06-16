@@ -28,6 +28,14 @@ func (m *MockCategoryRepository) GetById(ctx context.Context, id, userId int64) 
 	return args.Get(0).(*model.Category), args.Error(1)
 }
 
+func (m *MockCategoryRepository) GetByName(ctx context.Context, name string, userId int64) (*model.Category, error) {
+	args := m.Called(ctx, name, userId)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.Category), args.Error(1)
+}
+
 func (m *MockCategoryRepository) ListByUserId(ctx context.Context, userId int64) ([]model.Category, error) {
 	args := m.Called(ctx, userId)
 	if args.Get(0) == nil {
@@ -47,16 +55,23 @@ func (m *MockCategoryRepository) Delete(ctx context.Context, id, userId int64) e
 }
 
 func TestCategoryService(t *testing.T) {
-	// Disable logging for tests to keep output clean
 	zerolog.SetGlobalLevel(zerolog.Disabled)
 	ctx := context.Background()
 
+	// Setup helper to avoid code repetition in each test case.
+	setup := func() (*CategoryService, *MockCategoryRepository, *MockTransactionRepository) {
+		mockRepo := new(MockCategoryRepository)
+		mockTransactionRepo := new(MockTransactionRepository)
+		categoryService := NewCategoryService(mockRepo, mockTransactionRepo)
+		return categoryService, mockRepo, mockTransactionRepo
+	}
+
 	t.Run("CreateCategory", func(t *testing.T) {
 		// Arrange
-		mockRepo := new(MockCategoryRepository)
-		categoryService := NewCategoryService(mockRepo)
+		categoryService, mockRepo, _ := setup()
+		catToCreate := model.Category{UserId: int64(1), Name: "Groceries", Type: model.Expense}
 
-		catToCreate := model.Category{UserId: 1, Name: "Groceries"}
+		mockRepo.On("GetByName", ctx, catToCreate.Name, catToCreate.UserId).Return(nil, sql.ErrNoRows).Once()
 		mockRepo.On("Create", ctx, catToCreate).Return(int64(1), nil).Once()
 
 		// Act
@@ -71,9 +86,7 @@ func TestCategoryService(t *testing.T) {
 	t.Run("GetCategoryById", func(t *testing.T) {
 		t.Run("should return category when found", func(t *testing.T) {
 			// Arrange
-			mockRepo := new(MockCategoryRepository)
-			categoryService := NewCategoryService(mockRepo)
-
+			categoryService, mockRepo, _ := setup()
 			expectedCategory := &model.Category{Id: 1, UserId: 1, Name: "Rent"}
 			mockRepo.On("GetById", ctx, int64(1), int64(1)).Return(expectedCategory, nil).Once()
 
@@ -88,8 +101,7 @@ func TestCategoryService(t *testing.T) {
 
 		t.Run("should return error when not found", func(t *testing.T) {
 			// Arrange
-			mockRepo := new(MockCategoryRepository)
-			categoryService := NewCategoryService(mockRepo)
+			categoryService, mockRepo, _ := setup()
 
 			mockRepo.On("GetById", ctx, int64(99), int64(1)).Return(nil, sql.ErrNoRows).Once()
 
@@ -106,8 +118,7 @@ func TestCategoryService(t *testing.T) {
 
 	t.Run("ListCategoriesByUserId", func(t *testing.T) {
 		// Arrange
-		mockRepo := new(MockCategoryRepository)
-		categoryService := NewCategoryService(mockRepo)
+		categoryService, mockRepo, _ := setup()
 
 		expectedCategories := []model.Category{
 			{Id: 1, Name: "Food"},
@@ -127,18 +138,21 @@ func TestCategoryService(t *testing.T) {
 
 	t.Run("UpdateCategory", func(t *testing.T) {
 		// Arrange
-		mockRepo := new(MockCategoryRepository)
-		categoryService := NewCategoryService(mockRepo)
+		categoryService, mockRepo, _ := setup()
 
 		catToUpdate := model.Category{Name: "Utilities"}
-		expectedCatAfterUpdate := &model.Category{Id: 5, UserId: 1, Name: "Utilities"}
+		catId := int64(5)
+		userId := int64(1)
+		expectedCatAfterUpdate := &model.Category{Id: catId, UserId: userId, Name: "Utilities"}
 
-		// Setup mock expectations for the sequence of calls
+		// FIX: Simulate that the new name "Utilities" is NOT taken by another category.
+		mockRepo.On("GetByName", ctx, catToUpdate.Name, userId).Return(nil, sql.ErrNoRows).Once()
+		// Now, expect the Update and subsequent GetById calls to happen.
 		mockRepo.On("Update", ctx, mock.AnythingOfType("model.Category")).Return(nil).Once()
-		mockRepo.On("GetById", ctx, int64(5), int64(1)).Return(expectedCatAfterUpdate, nil).Once()
+		mockRepo.On("GetById", ctx, catId, userId).Return(expectedCatAfterUpdate, nil).Once()
 
 		// Act
-		updatedCat, err := categoryService.UpdateCategory(ctx, 5, 1, catToUpdate)
+		updatedCat, err := categoryService.UpdateCategory(ctx, catId, userId, catToUpdate)
 
 		// Assert
 		assert.NoError(t, err)
@@ -147,19 +161,22 @@ func TestCategoryService(t *testing.T) {
 	})
 
 	t.Run("DeleteCategory", func(t *testing.T) {
-		// Arrange
-		mockRepo := new(MockCategoryRepository)
-		categoryService := NewCategoryService(mockRepo)
+		t.Run("should delete when category is not in use", func(t *testing.T) {
+			// Arrange
+			categoryService, mockRepo, mockTransactionRepo := setup()
+			catId := int64(7)
+			userId := int64(1)
 
-		// Note: The business logic to check for transactions is not yet implemented in the service.
-		// This test verifies the current behavior, which is a direct call to the repository.
-		mockRepo.On("Delete", ctx, int64(7), int64(1)).Return(nil).Once()
+			// Now, expect the Delete call to happen.
+			mockRepo.On("Delete", ctx, catId, userId).Return(nil).Once()
 
-		// Act
-		err := categoryService.DeleteCategory(ctx, 7, 1)
+			// Act
+			err := categoryService.DeleteCategory(ctx, catId, userId)
 
-		// Assert
-		assert.NoError(t, err)
-		mockRepo.AssertExpectations(t)
+			// Assert
+			assert.NoError(t, err)
+			mockRepo.AssertExpectations(t)
+			mockTransactionRepo.AssertExpectations(t)
+		})
 	})
 }

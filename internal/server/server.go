@@ -56,9 +56,9 @@ func (s *Server) setupRouter(router *gin.Engine, logger *zerolog.Logger) {
 
 	// Serviços
 	authService := service.NewAuthService(userRepo, s.config.JWTSecretKey)
-	userService := service.NewUserService(userRepo)
+	userService := service.NewUserService(userRepo, categoryRepo)
 	accountService := service.NewAccountService(accountRepo, transactionRepo)
-	categoryService := service.NewCategoryService(categoryRepo)
+	categoryService := service.NewCategoryService(categoryRepo, transactionRepo)
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
 
 	// Handlers

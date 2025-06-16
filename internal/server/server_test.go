@@ -14,7 +14,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/jmoiron/sqlx"
 	"github.com/matheusmazzoni/gofinance-tracker-api/internal/api/dto"
 	"github.com/matheusmazzoni/gofinance-tracker-api/internal/api/middleware"
 	"github.com/matheusmazzoni/gofinance-tracker-api/internal/config"
@@ -30,14 +29,17 @@ import (
 )
 
 var (
-	testLogger = zerolog.Nop()
-	testCfg    = config.Config{JWTSecretKey: "account_handler_test_key"}
-	testDB     *sqlx.DB
+	testServer *Server
 )
 
 func TestMain(m *testing.M) {
 	var pgContainer testcontainers.Container
-	testDB, pgContainer = testhelper.SetupTestDB()
+
+	testLogger := zerolog.Nop()
+	testCfg := config.Config{JWTSecretKey: "account_handler_test_key"}
+	testDB, pgContainer := testhelper.SetupTestDB()
+	testServer = NewServer(testCfg, testDB, &testLogger)
+
 	exitCode := m.Run()
 
 	if err := pgContainer.Terminate(context.Background()); err != nil {
@@ -47,25 +49,13 @@ func TestMain(m *testing.M) {
 	os.Exit(exitCode)
 }
 
-// generateTestToken é um helper para criar um token JWT válido para nossos testes.
-func generateTestToken(t *testing.T, userId int64, secretKey string) string {
-	claims := &jwt.RegisteredClaims{
-		ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour * 1)),
-		Subject:   fmt.Sprintf("%d", userId),
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString([]byte(secretKey))
-	require.NoError(t, err)
-	return tokenString
-}
-
 // Middleware
 func TestAuthMiddleware(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 
 	// Cria uma instância do middleware com uma chave secreta de teste e um logger "mudo".
-	authMiddleware := middleware.AuthMiddleware(testCfg.JWTSecretKey, zerolog.Nop())
+	authMiddleware := middleware.AuthMiddleware(testServer.config.JWTSecretKey, zerolog.Nop())
 
 	// Cria uma rota protegida de exemplo.
 	router.GET("/protected", authMiddleware, func(c *gin.Context) {
@@ -106,7 +96,7 @@ func TestAuthMiddleware(t *testing.T) {
 		recorder := httptest.NewRecorder()
 
 		// Gera um token com uma chave secreta DIFERENTE
-		invalidToken := generateTestToken(t, 123, "this_is_the_wrong_key")
+		invalidToken := testhelper.GenerateTestToken(t, 123, "this_is_the_wrong_key")
 
 		req, _ := http.NewRequest("GET", "/protected", nil)
 		req.Header.Set("Authorization", "Bearer "+invalidToken)
@@ -128,7 +118,7 @@ func TestAuthMiddleware(t *testing.T) {
 			Subject:   "123",
 		}
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-		expiredToken, _ := token.SignedString([]byte(testCfg.JWTSecretKey))
+		expiredToken, _ := token.SignedString([]byte(testServer.config.JWTSecretKey))
 
 		req, _ := http.NewRequest("GET", "/protected", nil)
 		req.Header.Set("Authorization", "Bearer "+expiredToken)
@@ -143,7 +133,7 @@ func TestAuthMiddleware(t *testing.T) {
 
 	t.Run("should grant access when token is valid", func(t *testing.T) {
 		recorder := httptest.NewRecorder()
-		validToken := generateTestToken(t, 123, testCfg.JWTSecretKey)
+		validToken := testhelper.GenerateTestToken(t, 123, testServer.config.JWTSecretKey)
 
 		req, _ := http.NewRequest("GET", "/protected", nil)
 		req.Header.Set("Authorization", "Bearer "+validToken)
@@ -175,7 +165,7 @@ func TestAuthMiddleware(t *testing.T) {
 	})
 
 	t.Run("should allow access when token is valid", func(t *testing.T) {
-		validToken := generateTestToken(t, 123, testCfg.JWTSecretKey)
+		validToken := testhelper.GenerateTestToken(t, 123, testServer.config.JWTSecretKey)
 
 		req, _ := http.NewRequest("GET", "/protected", nil)
 		req.Header.Set("Authorization", "Bearer "+validToken)
@@ -192,9 +182,7 @@ func TestUserRoutes(t *testing.T) {
 	require := require.New(t)
 	gin.SetMode(gin.TestMode)
 
-	testhelper.TruncateTables(t, testDB)
-
-	server := NewServer(testCfg, testDB, &testLogger)
+	testhelper.TruncateTables(t, testServer.db)
 
 	t.Run("create user successfuly", func(t *testing.T) {
 		CreateUserRequestDTO := dto.CreateUserRequest{
@@ -208,7 +196,7 @@ func TestUserRoutes(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 
 		recorder := httptest.NewRecorder()
-		server.router.ServeHTTP(recorder, req)
+		testServer.router.ServeHTTP(recorder, req)
 
 		require.Equal(http.StatusCreated, recorder.Code, "the user should be created successfully")
 	})
@@ -225,7 +213,7 @@ func TestUserRoutes(t *testing.T) {
 		req1.Header.Set("Content-Type", "application/json")
 
 		recorder1 := httptest.NewRecorder()
-		server.router.ServeHTTP(recorder1, req1)
+		testServer.router.ServeHTTP(recorder1, req1)
 
 		// Garante que o primeiro usuário foi criado com sucesso.
 		require.Equal(http.StatusCreated, recorder1.Code, "the first user should be created successfully")
@@ -244,7 +232,7 @@ func TestUserRoutes(t *testing.T) {
 		recorder2 := httptest.NewRecorder()
 
 		// Act: Faz a segunda requisição, que deve falhar.
-		server.router.ServeHTTP(recorder2, req2)
+		testServer.router.ServeHTTP(recorder2, req2)
 
 		// Assert: Verifica se a resposta foi a esperada.
 		require.Equal(http.StatusBadRequest, recorder2.Code, "expected status 400 for duplicate email")
@@ -255,22 +243,79 @@ func TestUserRoutes(t *testing.T) {
 
 		assert.Contains(t, errorResponse.Error, "a user with this email already exists")
 	})
+	t.Run("should automatically create default categories for a new user", func(t *testing.T) {
+		// This test validates the entire user onboarding flow:
+		// 1. A user is created via the API.
+		// 2. The user logs in to get a token.
+		// 3. We verify that the default categories have been created for them.
+
+		// Arrange
+		testhelper.TruncateTables(t, testServer.db)
+
+		newUserEmail := "new.user@example.com"
+		newUserPassword := "password123"
+
+		createDTO := dto.CreateUserRequest{
+			Name:     "New User With Categories",
+			Email:    newUserEmail,
+			Password: newUserPassword,
+		}
+		createBody, _ := json.Marshal(createDTO)
+
+		// Act 1: Create the new user
+		recorderCreate := testhelper.MakeAPIRequest(t, testServer.router, "POST", "/v1/users", "", bytes.NewBuffer(createBody))
+		require.Equal(http.StatusCreated, recorderCreate.Code)
+
+		// Act 2: Login as the new user to get their token
+		loginDTO := dto.LoginRequest{Email: newUserEmail, Password: newUserPassword}
+		loginBody, _ := json.Marshal(loginDTO)
+		recorderLogin := testhelper.MakeAPIRequest(t, testServer.router, "POST", "/v1/auth/login", "", bytes.NewBuffer(loginBody))
+		require.Equal(http.StatusOK, recorderLogin.Code)
+
+		var loginResp dto.LoginResponse
+		err := json.Unmarshal(recorderLogin.Body.Bytes(), &loginResp)
+		require.NoError(err)
+		userToken := loginResp.Token
+		require.NotEmpty(t, userToken)
+
+		// Assert: Use assert.Eventually to poll the categories endpoint
+		// It will try for 2 seconds, checking every 100 milliseconds.
+		require.Eventually(func() bool {
+			// This function is the check that will be repeated.
+
+			// Act 3: Get the categories for the new user
+			recorderGetCats := testhelper.MakeAPIRequest(t, testServer.router, "GET", "/v1/categories", userToken, bytes.NewBuffer(nil))
+
+			if recorderGetCats.Code != http.StatusOK {
+				return false // If the request fails, try again.
+			}
+
+			var categories []dto.CategoryResponse
+			if err := json.Unmarshal(recorderGetCats.Body.Bytes(), &categories); err != nil {
+				return false // If JSON is invalid, try again.
+			}
+
+			// The actual assertion: check if the number of created categories matches our default list.
+			// The number 11 comes from the defaultCategories slice we defined in the service.
+			return assert.Len(t, categories, len(service.DefaultCategories), "should have the default number of categories")
+
+		}, 2*time.Second, 100*time.Millisecond, "it should create the default categories within the time limit")
+	})
 }
 func TestLoginRoutes(t *testing.T) {
 	require := require.New(t)
 	gin.SetMode(gin.TestMode)
 
-	testhelper.TruncateTables(t, testDB)
+	testhelper.TruncateTables(t, testServer.db)
 
-	userRepo := repository.NewUserRepository(testDB)
-	userService := service.NewUserService(userRepo)
+	userRepo := repository.NewUserRepository(testServer.db)
+	categoryRepo := repository.NewCategoryRepository(testServer.db)
+	userService := service.NewUserService(userRepo, categoryRepo)
 
 	email := "login@test.com"
 	password := "login123"
 	_, err := userService.CreateUser(context.Background(), model.User{Name: "Login Routes Test User", Email: email, Password: password})
 	require.NoError(err)
-
-	server := NewServer(testCfg, testDB, &testLogger)
 
 	t.Run("successfuly login", func(t *testing.T) {
 		loginRequest := dto.LoginRequest{
@@ -283,7 +328,7 @@ func TestLoginRoutes(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 
 		recorder := httptest.NewRecorder()
-		server.router.ServeHTTP(recorder, req)
+		testServer.router.ServeHTTP(recorder, req)
 
 		require.Equal(http.StatusOK, recorder.Code)
 
@@ -302,7 +347,7 @@ func TestLoginRoutes(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 
 		recorder := httptest.NewRecorder()
-		server.router.ServeHTTP(recorder, req)
+		testServer.router.ServeHTTP(recorder, req)
 
 		require.Equal(http.StatusUnauthorized, recorder.Code)
 
@@ -321,7 +366,7 @@ func TestLoginRoutes(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 
 		recorder := httptest.NewRecorder()
-		server.router.ServeHTTP(recorder, req)
+		testServer.router.ServeHTTP(recorder, req)
 
 		require.Equal(http.StatusUnauthorized, recorder.Code)
 
@@ -334,17 +379,15 @@ func TestAccountRoutes(t *testing.T) {
 	require := require.New(t)
 	gin.SetMode(gin.TestMode)
 
-	testhelper.TruncateTables(t, testDB)
-
-	server := NewServer(testCfg, testDB, &testLogger)
+	testhelper.TruncateTables(t, testServer.db)
 
 	ctx := context.Background()
-	accountRepo := repository.NewAccountRepository(testDB)
-	userRepo := repository.NewUserRepository(testDB)
+	accountRepo := repository.NewAccountRepository(testServer.db)
+	userRepo := repository.NewUserRepository(testServer.db)
 
 	t.Run("create an account successfully", func(t *testing.T) {
 		userId, _ := userRepo.Create(ctx, model.User{Name: "UserSuccessfullyCreated", Email: "success@test.com", PasswordHash: "hash"})
-		token := generateTestToken(t, userId, testCfg.JWTSecretKey)
+		token := testhelper.GenerateTestToken(t, userId, testServer.config.JWTSecretKey)
 
 		accountDTO := dto.CreateAccountRequest{
 			Name:           "My API Test Account",
@@ -359,7 +402,7 @@ func TestAccountRoutes(t *testing.T) {
 
 		recorder := httptest.NewRecorder()
 
-		server.router.ServeHTTP(recorder, req)
+		testServer.router.ServeHTTP(recorder, req)
 
 		require.Equal(http.StatusCreated, recorder.Code)
 
@@ -370,7 +413,7 @@ func TestAccountRoutes(t *testing.T) {
 	})
 	t.Run("create multiple accounts of different types", func(t *testing.T) {
 		userId, _ := userRepo.Create(ctx, model.User{Name: "MultipleAccountsDiffTypes", Email: "multipleAccountsDiffTypes@test.com", PasswordHash: "hash"})
-		token := generateTestToken(t, userId, testCfg.JWTSecretKey)
+		token := testhelper.GenerateTestToken(t, userId, testServer.config.JWTSecretKey)
 
 		checkingAccountDTO := dto.CreateAccountRequest{
 			Name:           "Checking Account",
@@ -384,7 +427,7 @@ func TestAccountRoutes(t *testing.T) {
 		recorderChecking := httptest.NewRecorder()
 
 		// --- ACT 1: Create the "Checking Account" ---
-		server.router.ServeHTTP(recorderChecking, reqChecking)
+		testServer.router.ServeHTTP(recorderChecking, reqChecking)
 
 		// --- ASSERT 1: Verify the first creation was successful ---
 		require.Equal(http.StatusCreated, recorderChecking.Code, "should create checking account")
@@ -402,7 +445,7 @@ func TestAccountRoutes(t *testing.T) {
 		recorderCreditCard := httptest.NewRecorder()
 
 		// --- ACT 2: Create the "Credit Card" ---
-		server.router.ServeHTTP(recorderCreditCard, reqCreditCard)
+		testServer.router.ServeHTTP(recorderCreditCard, reqCreditCard)
 
 		// --- ASSERT 2: Verify the second creation was successful ---
 		require.Equal(http.StatusCreated, recorderCreditCard.Code, "should create credit card")
@@ -413,7 +456,7 @@ func TestAccountRoutes(t *testing.T) {
 		recorderList := httptest.NewRecorder()
 
 		// Act
-		server.router.ServeHTTP(recorderList, reqList)
+		testServer.router.ServeHTTP(recorderList, reqList)
 
 		// Assert
 		require.Equal(http.StatusOK, recorderList.Code)
@@ -444,7 +487,7 @@ func TestAccountRoutes(t *testing.T) {
 	})
 	t.Run("create account with bad request body", func(t *testing.T) {
 		userId, _ := userRepo.Create(ctx, model.User{Name: "AccountBadRequest", Email: "accountBadRequest@test.com", PasswordHash: "hash"})
-		token := generateTestToken(t, userId, testCfg.JWTSecretKey)
+		token := testhelper.GenerateTestToken(t, userId, testServer.config.JWTSecretKey)
 
 		badRequestBody := `{"type": "checking", "initial_balance": 100}`
 
@@ -455,14 +498,14 @@ func TestAccountRoutes(t *testing.T) {
 		recorder := httptest.NewRecorder()
 
 		// Act
-		server.router.ServeHTTP(recorder, req)
+		testServer.router.ServeHTTP(recorder, req)
 
 		// Assert
 		require.Equal(http.StatusBadRequest, recorder.Code)
 	})
 	t.Run("delete account without transactions", func(t *testing.T) {
 		userId, _ := userRepo.Create(ctx, model.User{Name: "DeleteAccountWitoutTransactions", Email: "deleteAccountWitoutTransactions@test.com", PasswordHash: "hash"})
-		token := generateTestToken(t, userId, testCfg.JWTSecretKey)
+		token := testhelper.GenerateTestToken(t, userId, testServer.config.JWTSecretKey)
 
 		createAccountBody := `{"name": "DeleteAccountWithoutTransactions", "type": "checking", "initial_balance": 1000}`
 		req, _ := http.NewRequest("POST", "/v1/accounts", bytes.NewBuffer([]byte(createAccountBody)))
@@ -470,7 +513,7 @@ func TestAccountRoutes(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 
 		recorder := httptest.NewRecorder()
-		server.router.ServeHTTP(recorder, req)
+		testServer.router.ServeHTTP(recorder, req)
 		require.Equal(http.StatusCreated, recorder.Code)
 
 		var createAccountResp dto.CreateAccountResponse
@@ -482,13 +525,13 @@ func TestAccountRoutes(t *testing.T) {
 		req, _ = http.NewRequest("DELETE", fmt.Sprintf("/v1/accounts/%d", accountId), nil)
 		req.Header.Set("Authorization", "Bearer "+token)
 		recorder = httptest.NewRecorder()
-		server.router.ServeHTTP(recorder, req)
+		testServer.router.ServeHTTP(recorder, req)
 		require.Equal(http.StatusNoContent, recorder.Code)
 
 	})
 	t.Run("delete account with transactions", func(t *testing.T) {
 		userId, _ := userRepo.Create(ctx, model.User{Name: "DeleteAccountWithTransactions", Email: "deleteAccountWithTransactions@test.com", PasswordHash: "hash"})
-		token := generateTestToken(t, userId, testCfg.JWTSecretKey)
+		token := testhelper.GenerateTestToken(t, userId, testServer.config.JWTSecretKey)
 
 		createAccountBody := `{"name": "AccountDeleteScenario", "type": "checking", "initial_balance": 1000}`
 		req, _ := http.NewRequest("POST", "/v1/accounts", bytes.NewBuffer([]byte(createAccountBody)))
@@ -496,7 +539,7 @@ func TestAccountRoutes(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 
 		recorder := httptest.NewRecorder()
-		server.router.ServeHTTP(recorder, req)
+		testServer.router.ServeHTTP(recorder, req)
 		require.Equal(http.StatusCreated, recorder.Code)
 
 		var createAccountResp dto.CreateAccountResponse
@@ -516,7 +559,7 @@ func TestAccountRoutes(t *testing.T) {
 			req.Header.Set("Authorization", "Bearer "+token)
 			req.Header.Set("Content-Type", "application/json")
 			recorder = httptest.NewRecorder()
-			server.router.ServeHTTP(recorder, req)
+			testServer.router.ServeHTTP(recorder, req)
 			require.Equal(http.StatusCreated, recorder.Code)
 
 			var txResp map[string]int64
@@ -529,13 +572,13 @@ func TestAccountRoutes(t *testing.T) {
 		req, _ = http.NewRequest("DELETE", fmt.Sprintf("/v1/accounts/%d", accountId), nil)
 		req.Header.Set("Authorization", "Bearer "+token)
 		recorder = httptest.NewRecorder()
-		server.router.ServeHTTP(recorder, req)
+		testServer.router.ServeHTTP(recorder, req)
 		require.Equal(http.StatusNoContent, recorder.Code)
 
 	})
 	t.Run("update an account name successfully", func(t *testing.T) {
 		userId, _ := userRepo.Create(ctx, model.User{Name: "MultipleAccounts", Email: "multiAccounts@test.com", PasswordHash: "hash"})
-		token := generateTestToken(t, userId, testCfg.JWTSecretKey)
+		token := testhelper.GenerateTestToken(t, userId, testServer.config.JWTSecretKey)
 
 		accountDTO := dto.CreateAccountRequest{
 			Name:           "My API Test Account",
@@ -550,7 +593,7 @@ func TestAccountRoutes(t *testing.T) {
 
 		recorder := httptest.NewRecorder()
 
-		server.router.ServeHTTP(recorder, req)
+		testServer.router.ServeHTTP(recorder, req)
 
 		require.Equal(http.StatusCreated, recorder.Code)
 
@@ -572,7 +615,7 @@ func TestAccountRoutes(t *testing.T) {
 		req.Header.Set("Authorization", "Bearer "+token)
 		recorder = httptest.NewRecorder()
 
-		server.router.ServeHTTP(recorder, req)
+		testServer.router.ServeHTTP(recorder, req)
 
 		require.Equal(http.StatusOK, recorder.Code)
 		var resp dto.AccountResponse
@@ -581,7 +624,7 @@ func TestAccountRoutes(t *testing.T) {
 	})
 	t.Run("accounts belonging to the authenticated user", func(t *testing.T) {
 		userId, _ := userRepo.Create(ctx, model.User{Name: "Authenticated", Email: "autheticated@test.com", PasswordHash: "hash"})
-		token := generateTestToken(t, userId, testCfg.JWTSecretKey)
+		token := testhelper.GenerateTestToken(t, userId, testServer.config.JWTSecretKey)
 
 		_, _ = accountRepo.Create(ctx, model.Account{UserId: userId, Name: "My API Test Account"})
 
@@ -589,7 +632,7 @@ func TestAccountRoutes(t *testing.T) {
 		req.Header.Set("Authorization", "Bearer "+token)
 		recorder := httptest.NewRecorder()
 
-		server.router.ServeHTTP(recorder, req)
+		testServer.router.ServeHTTP(recorder, req)
 
 		require.Equal(http.StatusOK, recorder.Code)
 		var resp []dto.AccountResponse
@@ -602,7 +645,7 @@ func TestAccountRoutes(t *testing.T) {
 	t.Run("duplicate account name for the same user", func(t *testing.T) {
 		name := "Same Account"
 		userId, _ := userRepo.Create(ctx, model.User{Name: "DuplicateAccountSameUser", Email: "duplicateAccountSameUser@test.com", PasswordHash: "hash"})
-		token := generateTestToken(t, userId, testCfg.JWTSecretKey)
+		token := testhelper.GenerateTestToken(t, userId, testServer.config.JWTSecretKey)
 
 		firstAccount := dto.CreateAccountRequest{
 			Name:           name,
@@ -615,7 +658,7 @@ func TestAccountRoutes(t *testing.T) {
 		requeFirstAccount.Header.Set("Authorization", "Bearer "+token)
 		recorderFisrtAccount := httptest.NewRecorder()
 
-		server.router.ServeHTTP(recorderFisrtAccount, requeFirstAccount)
+		testServer.router.ServeHTTP(recorderFisrtAccount, requeFirstAccount)
 
 		require.Equal(http.StatusCreated, recorderFisrtAccount.Code)
 
@@ -630,7 +673,7 @@ func TestAccountRoutes(t *testing.T) {
 		reqSecondAccount.Header.Set("Authorization", "Bearer "+token)
 		recorderSecondAccount := httptest.NewRecorder()
 
-		server.router.ServeHTTP(recorderSecondAccount, reqSecondAccount)
+		testServer.router.ServeHTTP(recorderSecondAccount, reqSecondAccount)
 
 		// --- ASSERT 2: Verify the second creation was successful ---
 		require.Equal(http.StatusBadRequest, recorderSecondAccount.Code)
@@ -646,18 +689,16 @@ func TestTransactionRoutes(t *testing.T) {
 	require := require.New(t)
 	gin.SetMode(gin.TestMode)
 
-	testhelper.TruncateTables(t, testDB)
-
-	server := NewServer(testCfg, testDB, &testLogger)
+	testhelper.TruncateTables(t, testServer.db)
 
 	ctx := context.Background()
-	accountRepo := repository.NewAccountRepository(testDB)
-	userRepo := repository.NewUserRepository(testDB)
-	categoryRepo := repository.NewCategoryRepository(testDB)
+	accountRepo := repository.NewAccountRepository(testServer.db)
+	userRepo := repository.NewUserRepository(testServer.db)
+	categoryRepo := repository.NewCategoryRepository(testServer.db)
 
 	// Create a test user and generate a token
 	userId, _ := userRepo.Create(ctx, model.User{Name: "Transaction User", Email: "tx.user@example.com", PasswordHash: "hash"})
-	token := generateTestToken(t, userId, testCfg.JWTSecretKey)
+	token := testhelper.GenerateTestToken(t, userId, testServer.config.JWTSecretKey)
 
 	// Create prerequisite accounts and a category for the user
 	checkingAccountId, _ := accountRepo.Create(ctx, model.Account{UserId: userId, Name: "Checking Account", Type: model.Checking})
@@ -684,7 +725,7 @@ func TestTransactionRoutes(t *testing.T) {
 			recorder := httptest.NewRecorder()
 
 			// Act
-			server.router.ServeHTTP(recorder, req)
+			testServer.router.ServeHTTP(recorder, req)
 
 			// Assert
 			require.Equal(http.StatusCreated, recorder.Code)
@@ -712,7 +753,7 @@ func TestTransactionRoutes(t *testing.T) {
 			recorder := httptest.NewRecorder()
 
 			// Act
-			server.router.ServeHTTP(recorder, req)
+			testServer.router.ServeHTTP(recorder, req)
 
 			// Assert
 			require.Equal(http.StatusCreated, recorder.Code)
@@ -735,7 +776,7 @@ func TestTransactionRoutes(t *testing.T) {
 			recorder := httptest.NewRecorder()
 
 			// Act
-			server.router.ServeHTTP(recorder, req)
+			testServer.router.ServeHTTP(recorder, req)
 
 			// Assert
 			require.Equal(http.StatusBadRequest, recorder.Code)
@@ -753,7 +794,7 @@ func TestTransactionRoutes(t *testing.T) {
 			recorder := httptest.NewRecorder()
 
 			// Act
-			server.router.ServeHTTP(recorder, req)
+			testServer.router.ServeHTTP(recorder, req)
 
 			// Assert
 			require.Equal(http.StatusOK, recorder.Code)
@@ -770,8 +811,10 @@ func TestTransactionRoutes(t *testing.T) {
 
 		t.Run("should partially update a transaction", func(t *testing.T) {
 			// Arrange
+			description := "Expensive Groceries"
+
 			patchDTO := dto.PatchTransactionRequest{
-				Description: ptr("Expensive Groceries"),
+				Description: &description,
 			}
 			body, _ := json.Marshal(patchDTO)
 			url := fmt.Sprintf("/v1/transactions/%d", createdExpenseId)
@@ -781,7 +824,7 @@ func TestTransactionRoutes(t *testing.T) {
 			recorder := httptest.NewRecorder()
 
 			// Act
-			server.router.ServeHTTP(recorder, req)
+			testServer.router.ServeHTTP(recorder, req)
 
 			// Assert
 			require.Equal(http.StatusOK, recorder.Code)
@@ -794,17 +837,17 @@ func TestTransactionRoutes(t *testing.T) {
 			assert.True(t, decimal.NewFromFloat(75.50).Equal(resp.Amount))
 		})
 	})
-	t.Run("UpdateTransaction", func(t *testing.T) {
+	t.Run("Update Transaction", func(t *testing.T) {
 
 		// Create a new user and account for this test
 		userId, _ := userRepo.Create(ctx, model.User{Name: "Update User", Email: "update@test.com", PasswordHash: "hash"})
-		token := generateTestToken(t, userId, testCfg.JWTSecretKey)
-		accountId := createAccount(t, server.router, token, "Account for Update Test", "checking", "1000")
+		token := testhelper.GenerateTestToken(t, userId, testServer.config.JWTSecretKey)
+		accountId := testhelper.CreateAccount(t, testServer.router, token, "Account for Update Test", "checking", decimal.NewFromInt(1000))
 
 		// Create the initial transaction that we are going to update
 		initialDescription := "Initial Dinner"
 		initialAmount := "50.00"
-		txId := createTransaction(t, server.router, token, accountId, initialDescription, "expense", initialAmount)
+		txId := testhelper.CreateTransaction(t, testServer.router, token, accountId, initialDescription, "expense", initialAmount)
 
 		// Prepare the update request with new data
 		updateDTO := dto.UpdateTransactionRequest{
@@ -826,8 +869,7 @@ func TestTransactionRoutes(t *testing.T) {
 		recorder := httptest.NewRecorder()
 
 		// ACT: Execute the update request
-		server.router.ServeHTTP(recorder, req)
-		fmt.Print(recorder)
+		testServer.router.ServeHTTP(recorder, req)
 
 		// ASSERT 1: Check the immediate response from the PUT request
 		require.Equal(http.StatusOK, recorder.Code, "the update request should succeed")
@@ -847,7 +889,7 @@ func TestTransactionRoutes(t *testing.T) {
 		getRecorder := httptest.NewRecorder()
 
 		// Act for GET
-		server.router.ServeHTTP(getRecorder, getReq)
+		testServer.router.ServeHTTP(getRecorder, getReq)
 
 		// Assert for GET
 		require.Equal(http.StatusOK, getRecorder.Code)
@@ -858,11 +900,247 @@ func TestTransactionRoutes(t *testing.T) {
 		require.Equal("Updated Dinner with Friends", finalResponse.Description, "the persisted description should be updated")
 		require.True(decimal.NewFromFloat(65.50).Equal(finalResponse.Amount), "the persisted amount should be updated")
 	})
+	t.Run("Creation Transaction", func(t *testing.T) {
+		t.Run("should correctly update account balance after income and expense", func(t *testing.T) {
+			userID, err := userRepo.Create(ctx, model.User{Name: "Test User", Email: "transaction@test.com", PasswordHash: "hash"})
+			require.NoError(err)
+			token := testhelper.GenerateTestToken(t, userID, testServer.config.JWTSecretKey)
+
+			// Arrange: Create an account with an initial balance of $1000
+			accountID := testhelper.CreateAccount(t, testServer.router, token, "Account for Balance Test", "checking", decimal.NewFromInt(1000.00))
+
+			// Act 1: Add an income of $5000
+			testhelper.CreateTransaction(t, testServer.router, token, accountID, "Monthly Salary", "income", "5000.00")
+			// Assert 1: Balance should be 1000 + 5000 = 6000
+			balance := testhelper.GetAccountBalance(t, testServer.router, token, accountID)
+			require.True(decimal.NewFromInt(6000).Equal(balance), "Balance should increase after income")
+
+			// Act 2: Add an expense of $150
+			testhelper.CreateTransaction(t, testServer.router, token, accountID, "Dinner", "expense", "150.00")
+			// Assert 2: Balance should be 6000 - 150 = 5850
+			balance = testhelper.GetAccountBalance(t, testServer.router, token, accountID)
+			require.True(decimal.NewFromInt(5850).Equal(balance), "Balance should decrease after expense")
+		})
+		t.Run("invalid amount", func(t *testing.T) {
+			userID, err := userRepo.Create(ctx, model.User{Name: "Test User", Email: "invalidamount@test.com", PasswordHash: "hash"})
+			require.NoError(err)
+			token := testhelper.GenerateTestToken(t, userID, testServer.config.JWTSecretKey)
+			accountID := testhelper.CreateAccount(t, testServer.router, token, "Invalid Amount Account", "checking", decimal.NewFromInt(100))
+
+			createTransactionReq := dto.CreateTransactionRequest{
+				Description: "Zero Amount",
+				Amount:      decimal.NewFromInt(0),
+				Type:        model.Expense,
+				AccountId:   accountID,
+				Date:        time.Now(),
+			}
+			body, _ := json.Marshal(createTransactionReq)
+			respRecorder := testhelper.MakeAPIRequest(t, testServer.router, "POST", "/v1/transactions", token, bytes.NewBuffer(body))
+
+			require.Equal(http.StatusBadRequest, respRecorder.Code)
+			assert.Contains(t, respRecorder.Body.String(), "transaction amount must be positive")
+		})
+		t.Run("non-existent source account", func(t *testing.T) {
+			userID, err := userRepo.Create(ctx, model.User{Name: "Test User", Email: "noaccount@test.com", PasswordHash: "hash"})
+			require.NoError(err)
+			token := testhelper.GenerateTestToken(t, userID, testServer.config.JWTSecretKey)
+
+			createTransactionReq := dto.CreateTransactionRequest{
+				Description: "Ghost Transaction",
+				Amount:      decimal.NewFromInt(100),
+				Type:        model.Expense,
+				AccountId:   9999999,
+				Date:        time.Now(),
+			}
+			body, _ := json.Marshal(createTransactionReq)
+			respRecorder := testhelper.MakeAPIRequest(t, testServer.router, "POST", "/v1/transactions", token, bytes.NewBuffer(body))
+
+			require.Equal(http.StatusBadRequest, respRecorder.Code)
+			assert.Contains(t, respRecorder.Body.String(), "source account not found")
+		})
+	})
+	t.Run("Transfer Scenarios", func(t *testing.T) {
+		t.Run("update balances of both accounts after a valid transfer", func(t *testing.T) {
+			userID, err := userRepo.Create(ctx, model.User{Name: "Test User", Email: "transfer@test.com", PasswordHash: "hash"})
+			require.NoError(err)
+			token := testhelper.GenerateTestToken(t, userID, testServer.config.JWTSecretKey)
+
+			// Arrange
+			sourceAccountID := testhelper.CreateAccount(t, testServer.router, token, "Source Account", "checking", decimal.NewFromInt(1000.00))
+			destAccountID := testhelper.CreateAccount(t, testServer.router, token, "Destination Account", "savings", decimal.NewFromInt(500.00))
+
+			// Act: Transfer $200 from source to destination
+			testhelper.CreateTransfer(t, testServer.router, token, "Saving money", "200.00", sourceAccountID, destAccountID)
+
+			// Assert
+			sourceBalance := testhelper.GetAccountBalance(t, testServer.router, token, sourceAccountID)
+			destBalance := testhelper.GetAccountBalance(t, testServer.router, token, destAccountID)
+
+			require.True(decimal.NewFromInt(800).Equal(sourceBalance), "Source account balance should decrease by 200")
+			require.True(decimal.NewFromInt(700).Equal(destBalance), "Destination account balance should increase by 200")
+		})
+		t.Run("transfer to the same account", func(t *testing.T) {
+			userID, err := userRepo.Create(ctx, model.User{Name: "Test User", Email: "sametransfer@test.com", PasswordHash: "hash"})
+			require.NoError(err)
+			token := testhelper.GenerateTestToken(t, userID, testServer.config.JWTSecretKey)
+
+			accountID := testhelper.CreateAccount(t, testServer.router, token, "Same-Transfer Account", "checking", decimal.NewFromInt(1000))
+
+			createTransactionReq := dto.CreateTransactionRequest{
+				Description:          "Invalid",
+				Amount:               decimal.NewFromInt(100),
+				Type:                 model.Transfer,
+				AccountId:            accountID,
+				DestinationAccountId: &accountID,
+				Date:                 time.Now(),
+			}
+			body, _ := json.Marshal(createTransactionReq)
+			respRecorder := testhelper.MakeAPIRequest(t, testServer.router, "POST", "/v1/transactions", token, bytes.NewBuffer(body))
+
+			require.Equal(http.StatusBadRequest, respRecorder.Code)
+			assert.Contains(t, respRecorder.Body.String(), "source and destination accounts cannot be the same")
+		})
+		t.Run("non-existent destination account", func(t *testing.T) {
+			userID, err := userRepo.Create(ctx, model.User{Name: "Test User", Email: "nodest@test.com", PasswordHash: "hash"})
+			require.NoError(err)
+			token := testhelper.GenerateTestToken(t, userID, testServer.config.JWTSecretKey)
+
+			sourceAccountID := testhelper.CreateAccount(t, testServer.router, token, "No-Dest Source", "checking", decimal.NewFromInt(1000))
+			invalidDestinationAccountID := int64(9999999)
+
+			createTransactionReq := dto.CreateTransactionRequest{
+				Description:          "Ghost Transaction",
+				Amount:               decimal.NewFromInt(100),
+				Type:                 model.Transfer,
+				DestinationAccountId: &invalidDestinationAccountID,
+				AccountId:            sourceAccountID,
+				Date:                 time.Now(),
+			}
+			body, _ := json.Marshal(createTransactionReq)
+			respRecorder := testhelper.MakeAPIRequest(t, testServer.router, "POST", "/v1/transactions", token, bytes.NewBuffer(body))
+
+			require.Equal(http.StatusBadRequest, respRecorder.Code)
+			assert.Contains(t, respRecorder.Body.String(), "destination account not found")
+		})
+		t.Run("destination account not informed", func(t *testing.T) {
+			userID, err := userRepo.Create(ctx, model.User{Name: "Test User", Email: "dontdestinf@test.com", PasswordHash: "hash"})
+			require.NoError(err)
+			token := testhelper.GenerateTestToken(t, userID, testServer.config.JWTSecretKey)
+
+			sourceAccountID := testhelper.CreateAccount(t, testServer.router, token, "No-Dest Source", "checking", decimal.NewFromInt(1000))
+
+			createTransactionReq := dto.CreateTransactionRequest{
+				Description:          "Ghost Transaction",
+				Amount:               decimal.NewFromInt(100),
+				Type:                 model.Transfer,
+				AccountId:            sourceAccountID,
+				Date:                 time.Now(),
+				DestinationAccountId: nil,
+			}
+			body, _ := json.Marshal(createTransactionReq)
+			respRecorder := testhelper.MakeAPIRequest(t, testServer.router, "POST", "/v1/transactions", token, bytes.NewBuffer(body))
+
+			require.Equal(http.StatusBadRequest, respRecorder.Code)
+			assert.Contains(t, respRecorder.Body.String(), "destination account is required for a transfer")
+		})
+	})
 }
 
-// ptr is a simple helper function to get a pointer to a value, useful for DTOs.
-func ptr[T any](v T) *T {
-	return &v
-}
+// TestBusinessScenarios validates complex, multi-step user workflows.
+func TestBusinessScenarios(t *testing.T) {
+	require := require.New(t)
+	gin.SetMode(gin.TestMode)
 
-// TODO: Fazer para outros Routes
+	ctx := context.Background()
+	userRepo := repository.NewUserRepository(testServer.db)
+
+	t.Run("Scenario: 'I Messed Up My Entry' Correction Flow", func(t *testing.T) {
+		// This test simulates a user creating, editing, and deleting a transaction
+		// and verifies the account balance is correctly recalculated at each step.
+		testhelper.TruncateTables(t, testServer.db)
+
+		// Arrange 1: Create a user and an account with an initial balance.
+		userID, _ := userRepo.Create(ctx, model.User{Name: "Correction User", Email: "correction@test.com", PasswordHash: "hash"})
+		token := testhelper.GenerateTestToken(t, userID, testServer.config.JWTSecretKey)
+		accountID := testhelper.CreateAccount(t, testServer.router, token, "Checking Account", "checking", decimal.NewFromInt(500))
+
+		// Assert 1: Initial balance is correct.
+		balance := testhelper.GetAccountBalance(t, testServer.router, token, accountID)
+		require.True(decimal.NewFromInt(500).Equal(balance))
+
+		// Act 1: Create an incorrect expense of $100
+		expenseID := testhelper.CreateTransaction(t, testServer.router, token, accountID, "Dinner", "expense", "100.00")
+
+		// Assert 2: Balance is updated correctly after creation.
+		balance = testhelper.GetAccountBalance(t, testServer.router, token, accountID)
+		require.Equal(decimal.NewFromInt(400), balance, "Balance should be 400 after $100 expense")
+
+		// Act 2: Edit the expense to the correct amount of $80.
+		testhelper.UpdateTransaction(t, testServer.router, token, expenseID, accountID, "Dinner (Corrected)", "expense", "80.00")
+
+		// Assert 3: Balance is recalculated correctly after update.
+		balance = testhelper.GetAccountBalance(t, testServer.router, token, accountID)
+		require.Equal(decimal.NewFromInt(420), balance, "Balance should be $420 after correction to $80")
+
+		// Act 3: Delete the expense entirely.
+		testhelper.DeleteTransaction(t, testServer.router, token, expenseID)
+
+		// Assert 4: Balance returns to its original state.
+		balance = testhelper.GetAccountBalance(t, testServer.router, token, accountID)
+		require.True(decimal.NewFromInt(500).Equal(balance), "Balance should return to 500 after deletion")
+	})
+
+	t.Run("Scenario: Credit Card Payment Workflow", func(t *testing.T) {
+		// This test simulates paying off a credit card balance from a checking account.
+		testhelper.TruncateTables(t, testServer.db)
+
+		// Arrange: Create user, a checking account with $2000, and a credit card with $0.
+		userID, _ := userRepo.Create(ctx, model.User{Name: "Payment User", Email: "payment@test.com", PasswordHash: "hash"})
+		token := testhelper.GenerateTestToken(t, userID, testServer.config.JWTSecretKey)
+		checkingID := testhelper.CreateAccount(t, testServer.router, token, "My Checking", "checking", decimal.NewFromInt(2000))
+		creditCardID := testhelper.CreateAccount(t, testServer.router, token, "My Credit Card", "credit_card", decimal.NewFromInt(0))
+
+		// Arrange: Add $450 in expenses to the credit card.
+		testhelper.CreateTransaction(t, testServer.router, token, creditCardID, "Groceries", "expense", "150.00")
+		testhelper.CreateTransaction(t, testServer.router, token, creditCardID, "Online Shopping", "expense", "300.00")
+
+		// Assert 1: Verify pre-payment balances.
+		require.True(decimal.NewFromInt(2000).Equal(testhelper.GetAccountBalance(t, testServer.router, token, checkingID)))
+		require.True(decimal.NewFromInt(-450).Equal(testhelper.GetAccountBalance(t, testServer.router, token, creditCardID)), "Credit card balance should be negative after expenses")
+
+		// Act: Pay the credit card bill by transferring $450 from Checking to Credit Card.
+		testhelper.CreateTransfer(t, testServer.router, token, "CC Payment", "450.00", checkingID, creditCardID)
+
+		// Assert 2: Verify final balances.
+		assert.True(t, decimal.NewFromInt(1550).Equal(testhelper.GetAccountBalance(t, testServer.router, token, checkingID)), "Checking account balance should decrease")
+		assert.True(t, decimal.Zero.Equal(testhelper.GetAccountBalance(t, testServer.router, token, creditCardID)), "Credit card balance should be zero after payment")
+	})
+
+	t.Run("Scenario: Application-Level Cascade Delete", func(t *testing.T) {
+		// This test verifies that deleting an account successfully deletes all associated transactions.
+		testhelper.TruncateTables(t, testServer.db)
+
+		// Arrange: Create user and multiple accounts/transactions.
+		userID, _ := userRepo.Create(ctx, model.User{Name: "Cascade User", Email: "cascade@test.com", PasswordHash: "hash"})
+		token := testhelper.GenerateTestToken(t, userID, testServer.config.JWTSecretKey)
+
+		accountToDeleteID := testhelper.CreateAccount(t, testServer.router, token, "Account To Delete", "checking", decimal.NewFromInt(100))
+		otherAccountID := testhelper.CreateAccount(t, testServer.router, token, "Other Account", "savings", decimal.NewFromInt(200))
+
+		tx1ID := testhelper.CreateTransaction(t, testServer.router, token, accountToDeleteID, "Expense from deleted account", "expense", "10")
+		tx2ID := testhelper.CreateTransfer(t, testServer.router, token, "Transfer from deleted account", "20", accountToDeleteID, otherAccountID)
+		tx3ID := testhelper.CreateTransaction(t, testServer.router, token, otherAccountID, "Expense from other account", "expense", "30")
+
+		// Act: Delete the account that has history.
+		testhelper.DeleteAccount(t, testServer.router, token, accountToDeleteID)
+
+		// Assert: Verify resources were deleted or preserved correctly.
+		// 1. The account itself is gone.
+		testhelper.AssertAccountNotFound(t, testServer.router, token, accountToDeleteID)
+		// 2. Transactions linked to the deleted account are gone.
+		testhelper.AssertTransactionNotFound(t, testServer.router, token, tx1ID)
+		testhelper.AssertTransactionNotFound(t, testServer.router, token, tx2ID)
+		// 3. The unrelated transaction still exists.
+		testhelper.AssertTransactionFound(t, testServer.router, token, tx3ID)
+	})
+}
