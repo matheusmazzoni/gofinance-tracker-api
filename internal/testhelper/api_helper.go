@@ -17,45 +17,39 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TODO: trocar referencias do body para dtos
-
-// makeAPIRequest is a generic helper to perform an API call.
+// MakeAPIRequest is a generic helper to perform an API call against the test router.
+// It builds a request, sets the necessary headers, executes the request, and returns the response recorder.
 func MakeAPIRequest(t *testing.T, router *gin.Engine, method, url, token string, body *bytes.Buffer) *httptest.ResponseRecorder {
-	req, _ := http.NewRequest(method, url, body)
+	// If body is nil, create an empty buffer to avoid errors with http.NewRequest.
+	if body == nil {
+		body = &bytes.Buffer{}
+	}
+
+	req, err := http.NewRequest(method, url, body)
+	require.NoError(t, err)
+
 	req.Header.Set("Content-Type", "application/json")
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
+
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, req)
 	return recorder
 }
 
-func CreateUser(t *testing.T, router *gin.Engine, name, email, password string) int64 {
-	createUserReq := dto.CreateUserRequest{
-		Name:     name,
-		Email:    email,
-		Password: password,
-	}
-	body, _ := json.Marshal(createUserReq)
-
-	recorder := MakeAPIRequest(t, router, "POST", "/v1/users", "", bytes.NewBuffer(body))
-	require.Equal(t, http.StatusCreated, recorder.Code)
-
-	var resp dto.UserResponse
-	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
-	return resp.Id
-}
-
+// CreateAccount is a test helper to create a new account via an API call.
+// It asserts for a successful creation and returns the new account's Id.
 func CreateAccount(t *testing.T, router *gin.Engine, token, name string, accType model.AccountType, initialBalance decimal.Decimal) int64 {
 	createAccountReq := dto.CreateAccountRequest{
 		Name:           name,
 		Type:           accType,
 		InitialBalance: initialBalance,
 	}
-	body, _ := json.Marshal(createAccountReq)
+	body, err := json.Marshal(createAccountReq)
+	require.NoError(t, err)
 
-	recorder := MakeAPIRequest(t, router, "POST", "/v1/accounts", token, bytes.NewBuffer(body))
+	recorder := MakeAPIRequest(t, router, http.MethodPost, "/v1/accounts", token, bytes.NewBuffer(body))
 	require.Equal(t, http.StatusCreated, recorder.Code)
 
 	var resp dto.CreateAccountResponse
@@ -63,20 +57,19 @@ func CreateAccount(t *testing.T, router *gin.Engine, token, name string, accType
 	return resp.Id
 }
 
-func GetAccountBalance(t *testing.T, router *gin.Engine, token string, accountID int64) decimal.Decimal {
-	req, _ := http.NewRequest("GET", fmt.Sprintf("/v1/accounts/%d", accountID), nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-	recorder := httptest.NewRecorder()
-	router.ServeHTTP(recorder, req)
-
+// GetAccountBalance is a test helper to fetch a specific account and return its balance.
+func GetAccountBalance(t *testing.T, router *gin.Engine, token string, accountId int64) decimal.Decimal {
+	url := fmt.Sprintf("/v1/accounts/%d", accountId)
+	recorder := MakeAPIRequest(t, router, http.MethodGet, url, token, nil)
 	require.Equal(t, http.StatusOK, recorder.Code)
 
 	var resp dto.AccountResponse
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
-	fmt.Print(resp)
 	return resp.Balance
 }
 
+// CreateTransaction is a test helper to create a new transaction via an API call.
+// It asserts for a successful creation and returns the new transaction's Id.
 func CreateTransaction(t *testing.T, router *gin.Engine, token string, accountId int64, description, txType, amount string) int64 {
 	createTransactionReq := dto.CreateTransactionRequest{
 		Description: description,
@@ -86,14 +79,10 @@ func CreateTransaction(t *testing.T, router *gin.Engine, token string, accountId
 		AccountId:   accountId,
 		CategoryId:  nil,
 	}
-	body, _ := json.Marshal(createTransactionReq)
-	req, _ := http.NewRequest("POST", "/v1/transactions", bytes.NewBuffer(body))
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", "application/json")
+	body, err := json.Marshal(createTransactionReq)
+	require.NoError(t, err)
 
-	recorder := httptest.NewRecorder()
-	router.ServeHTTP(recorder, req)
-	fmt.Print(recorder.Body)
+	recorder := MakeAPIRequest(t, router, http.MethodPost, "/v1/transactions", token, bytes.NewBuffer(body))
 	require.Equal(t, http.StatusCreated, recorder.Code)
 
 	var resp dto.TransactionResponse
@@ -101,7 +90,9 @@ func CreateTransaction(t *testing.T, router *gin.Engine, token string, accountId
 	return resp.Id
 }
 
-func UpdateTransaction(t *testing.T, router *gin.Engine, token string, txID, accountId int64, description, txType, amount string) {
+// UpdateTransaction is a test helper to update an existing transaction via an API call.
+// It asserts that the update operation was successful.
+func UpdateTransaction(t *testing.T, router *gin.Engine, token string, txId, accountId int64, description, txType, amount string) {
 	updateDTO := dto.UpdateTransactionRequest{
 		Description: description,
 		Amount:      decimal.RequireFromString(amount),
@@ -110,43 +101,38 @@ func UpdateTransaction(t *testing.T, router *gin.Engine, token string, txID, acc
 		AccountId:   accountId,
 		CategoryId:  nil,
 	}
-	body, _ := json.Marshal(updateDTO)
-	req, _ := http.NewRequest("PUT", fmt.Sprintf("/v1/transactions/%d", txID), bytes.NewBuffer(body))
+	body, err := json.Marshal(updateDTO)
+	require.NoError(t, err)
 
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", "application/json")
-
-	recorder := httptest.NewRecorder()
-	router.ServeHTTP(recorder, req)
+	url := fmt.Sprintf("/v1/transactions/%d", txId)
+	recorder := MakeAPIRequest(t, router, http.MethodPut, url, token, bytes.NewBuffer(body))
 	require.Equal(t, http.StatusOK, recorder.Code)
 }
 
-func DeleteTransaction(t *testing.T, router *gin.Engine, token string, txID int64) {
-	req, _ := http.NewRequest("DELETE", fmt.Sprintf("/v1/transactions/%d", txID), nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-	recorder := httptest.NewRecorder()
-	router.ServeHTTP(recorder, req)
+// DeleteTransaction is a test helper to delete a transaction via an API call.
+// It asserts that the deletion was successful.
+func DeleteTransaction(t *testing.T, router *gin.Engine, token string, txId int64) {
+	url := fmt.Sprintf("/v1/transactions/%d", txId)
+	recorder := MakeAPIRequest(t, router, http.MethodDelete, url, token, nil)
 	require.Equal(t, http.StatusNoContent, recorder.Code)
 }
 
-func CreateTransfer(t *testing.T, router *gin.Engine, token, description, amount string, fromAccountID, toAccountID int64) int64 {
+// CreateTransfer is a test helper to create a transfer transaction via an API call.
+// It asserts for a successful creation and returns the new transaction's Id.
+func CreateTransfer(t *testing.T, router *gin.Engine, token, description, amount string, fromAccountId, toAccountId int64) int64 {
 	createTransferReq := dto.CreateTransactionRequest{
 		Description:          description,
 		Amount:               decimal.RequireFromString(amount),
 		Date:                 time.Now(),
 		Type:                 model.Transfer,
-		AccountId:            fromAccountID,
-		DestinationAccountId: &toAccountID,
+		AccountId:            fromAccountId,
+		DestinationAccountId: &toAccountId,
 		CategoryId:           nil,
 	}
-	body, _ := json.Marshal(createTransferReq)
+	body, err := json.Marshal(createTransferReq)
+	require.NoError(t, err)
 
-	req, _ := http.NewRequest("POST", "/v1/transactions", bytes.NewBuffer(body))
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", "application/json")
-
-	recorder := httptest.NewRecorder()
-	router.ServeHTTP(recorder, req)
+	recorder := MakeAPIRequest(t, router, http.MethodPost, "/v1/transactions", token, bytes.NewBuffer(body))
 	require.Equal(t, http.StatusCreated, recorder.Code)
 
 	var resp dto.TransactionResponse
@@ -154,39 +140,37 @@ func CreateTransfer(t *testing.T, router *gin.Engine, token, description, amount
 	return resp.Id
 }
 
-func DeleteAccount(t *testing.T, router *gin.Engine, token string, accountID int64) {
-	req, _ := http.NewRequest("DELETE", fmt.Sprintf("/v1/accounts/%d", accountID), nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-	recorder := httptest.NewRecorder()
-	router.ServeHTTP(recorder, req)
+// DeleteAccount is a test helper to delete an account via an API call.
+// It asserts that the deletion was successful.
+func DeleteAccount(t *testing.T, router *gin.Engine, token string, accountId int64) {
+	url := fmt.Sprintf("/v1/accounts/%d", accountId)
+	recorder := MakeAPIRequest(t, router, http.MethodDelete, url, token, nil)
 	require.Equal(t, http.StatusNoContent, recorder.Code)
 }
 
-func AssertAccountNotFound(t *testing.T, router *gin.Engine, token string, accountID int64) {
-	req, _ := http.NewRequest("GET", fmt.Sprintf("/v1/accounts/%d", accountID), nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-	recorder := httptest.NewRecorder()
-	router.ServeHTTP(recorder, req)
+// AssertAccountNotFound is a test helper to verify that a GET request for an account returns a 404 Not Found status.
+func AssertAccountNotFound(t *testing.T, router *gin.Engine, token string, accountId int64) {
+	url := fmt.Sprintf("/v1/accounts/%d", accountId)
+	recorder := MakeAPIRequest(t, router, http.MethodGet, url, token, nil)
 	require.Equal(t, http.StatusNotFound, recorder.Code)
 }
 
-func AssertTransactionNotFound(t *testing.T, router *gin.Engine, token string, transactionID int64) {
-	req, _ := http.NewRequest("GET", fmt.Sprintf("/v1/transactions/%d", transactionID), nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-	recorder := httptest.NewRecorder()
-	router.ServeHTTP(recorder, req)
+// AssertTransactionNotFound is a test helper to verify that a GET request for a transaction returns a 404 Not Found status.
+func AssertTransactionNotFound(t *testing.T, router *gin.Engine, token string, transactionId int64) {
+	url := fmt.Sprintf("/v1/transactions/%d", transactionId)
+	recorder := MakeAPIRequest(t, router, http.MethodGet, url, token, nil)
 	require.Equal(t, http.StatusNotFound, recorder.Code)
 }
 
-func AssertTransactionFound(t *testing.T, router *gin.Engine, token string, transactionID int64) {
-	req, _ := http.NewRequest("GET", fmt.Sprintf("/v1/transactions/%d", transactionID), nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-	recorder := httptest.NewRecorder()
-	router.ServeHTTP(recorder, req)
+// AssertTransactionFound is a test helper to verify that a GET request for a transaction returns a 200 OK status.
+func AssertTransactionFound(t *testing.T, router *gin.Engine, token string, transactionId int64) {
+	url := fmt.Sprintf("/v1/transactions/%d", transactionId)
+	recorder := MakeAPIRequest(t, router, http.MethodGet, url, token, nil)
 	require.Equal(t, http.StatusOK, recorder.Code)
 }
 
-// GenerateTestToken é um helper para criar um token JWT válido para nossos testes.
+// GenerateTestToken creates a valid JWT for testing purposes.
+// It uses the provided user Id as the subject of the token.
 func GenerateTestToken(t *testing.T, userId int64, secretKey string) string {
 	claims := &jwt.RegisteredClaims{
 		ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour * 1)),

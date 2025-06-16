@@ -14,13 +14,17 @@ run:
 	@echo "Running application..."
 	@go run $(CMD_PATH)
 
+download:
+	@echo "Download go modules..."
+	@go mod download
+
 tidy:
 	@echo "Tidying go modules..."
 	@go mod tidy
 
 test:
 	@echo "Running tests..."
-	@go test -v ./...
+	@go test -v -race -cover ./...
 
 swag-docs:
 	@swag fmt

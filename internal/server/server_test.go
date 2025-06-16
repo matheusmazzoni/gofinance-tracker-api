@@ -243,6 +243,64 @@ func TestUserRoutes(t *testing.T) {
 
 		assert.Contains(t, errorResponse.Error, "a user with this email already exists")
 	})
+	t.Run("should automatically create default categories for a new user", func(t *testing.T) {
+		// This test validates the entire user onboarding flow:
+		// 1. A user is created via the API.
+		// 2. The user logs in to get a token.
+		// 3. We verify that the default categories have been created for them.
+
+		// Arrange
+		testhelper.TruncateTables(t, testServer.db)
+
+		newUserEmail := "new.user@example.com"
+		newUserPassword := "password123"
+
+		createDTO := dto.CreateUserRequest{
+			Name:     "New User With Categories",
+			Email:    newUserEmail,
+			Password: newUserPassword,
+		}
+		createBody, _ := json.Marshal(createDTO)
+
+		// Act 1: Create the new user
+		recorderCreate := testhelper.MakeAPIRequest(t, testServer.router, "POST", "/v1/users", "", bytes.NewBuffer(createBody))
+		require.Equal(http.StatusCreated, recorderCreate.Code)
+
+		// Act 2: Login as the new user to get their token
+		loginDTO := dto.LoginRequest{Email: newUserEmail, Password: newUserPassword}
+		loginBody, _ := json.Marshal(loginDTO)
+		recorderLogin := testhelper.MakeAPIRequest(t, testServer.router, "POST", "/v1/auth/login", "", bytes.NewBuffer(loginBody))
+		require.Equal(http.StatusOK, recorderLogin.Code)
+
+		var loginResp dto.LoginResponse
+		err := json.Unmarshal(recorderLogin.Body.Bytes(), &loginResp)
+		require.NoError(err)
+		userToken := loginResp.Token
+		require.NotEmpty(t, userToken)
+
+		// Assert: Use assert.Eventually to poll the categories endpoint
+		// It will try for 2 seconds, checking every 100 milliseconds.
+		require.Eventually(func() bool {
+			// This function is the check that will be repeated.
+
+			// Act 3: Get the categories for the new user
+			recorderGetCats := testhelper.MakeAPIRequest(t, testServer.router, "GET", "/v1/categories", userToken, bytes.NewBuffer(nil))
+
+			if recorderGetCats.Code != http.StatusOK {
+				return false // If the request fails, try again.
+			}
+
+			var categories []dto.CategoryResponse
+			if err := json.Unmarshal(recorderGetCats.Body.Bytes(), &categories); err != nil {
+				return false // If JSON is invalid, try again.
+			}
+
+			// The actual assertion: check if the number of created categories matches our default list.
+			// The number 11 comes from the defaultCategories slice we defined in the service.
+			return assert.Len(t, categories, len(service.DefaultCategories), "should have the default number of categories")
+
+		}, 2*time.Second, 100*time.Millisecond, "it should create the default categories within the time limit")
+	})
 }
 func TestLoginRoutes(t *testing.T) {
 	require := require.New(t)
@@ -251,7 +309,8 @@ func TestLoginRoutes(t *testing.T) {
 	testhelper.TruncateTables(t, testServer.db)
 
 	userRepo := repository.NewUserRepository(testServer.db)
-	userService := service.NewUserService(userRepo)
+	categoryRepo := repository.NewCategoryRepository(testServer.db)
+	userService := service.NewUserService(userRepo, categoryRepo)
 
 	email := "login@test.com"
 	password := "login123"
@@ -811,7 +870,6 @@ func TestTransactionRoutes(t *testing.T) {
 
 		// ACT: Execute the update request
 		testServer.router.ServeHTTP(recorder, req)
-		fmt.Print(recorder)
 
 		// ASSERT 1: Check the immediate response from the PUT request
 		require.Equal(http.StatusOK, recorder.Code, "the update request should succeed")
