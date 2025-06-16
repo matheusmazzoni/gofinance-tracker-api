@@ -57,9 +57,10 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 	}
 
 	response := dto.UserResponse{
-		Id:    id,
-		Name:  user.Name,
-		Email: user.Email,
+		Id:        id,
+		Name:      user.Name,
+		Email:     user.Email,
+		CreatedAt: user.CreatedAt,
 	}
 
 	dto.SendSuccessResponse(c, http.StatusCreated, response)
