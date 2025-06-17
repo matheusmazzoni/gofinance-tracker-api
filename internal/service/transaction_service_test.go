@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/matheusmazzoni/gofinance-tracker-api/internal/model"
+	"github.com/matheusmazzoni/gofinance-tracker-api/internal/repository"
 	"github.com/rs/zerolog"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
@@ -34,9 +35,9 @@ func (m *MockTransactionRepository) GetById(ctx context.Context, id, userId int6
 	return args.Get(0).(*model.Transaction), args.Error(1)
 }
 
-// ListByUserId simulates listing all transactions for a given user.
-func (m *MockTransactionRepository) ListByUserId(ctx context.Context, userId int64) ([]model.Transaction, error) {
-	args := m.Called(ctx, userId)
+// List simulates listing all transactions for a given user.
+func (m *MockTransactionRepository) List(ctx context.Context, userId int64, filters repository.ListTransactionFilters) ([]model.Transaction, error) {
+	args := m.Called(ctx, userId, filters)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}

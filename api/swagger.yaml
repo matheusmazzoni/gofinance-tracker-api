@@ -3,12 +3,13 @@ definitions:
   dto.AccountResponse:
     properties:
       balance:
-        description: Adicionaremos a lógica para calcular isso depois
         type: number
       created_at:
         type: string
       id:
         type: integer
+      initial_balance:
+        type: number
       name:
         type: string
       type:
@@ -33,12 +34,15 @@ definitions:
     type: object
   dto.CreateAccountRequest:
     properties:
+      initial_balance:
+        type: number
       name:
         minLength: 2
         type: string
       type:
         $ref: '#/definitions/model.AccountType'
     required:
+    - initial_balance
     - name
     - type
     type: object
@@ -65,12 +69,6 @@ definitions:
         type: integer
       type:
         $ref: '#/definitions/model.TransactionType'
-    required:
-    - account_id
-    - amount
-    - date
-    - description
-    - type
     type: object
   dto.CreateUserRequest:
     properties:
@@ -93,6 +91,36 @@ definitions:
         description: A mensagem de erro descritiva.
         example: a descrição do erro aparece aqui
         type: string
+    type: object
+  dto.LoginRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  dto.LoginResponse:
+    properties:
+      token:
+        type: string
+    type: object
+  dto.PatchTransactionRequest:
+    properties:
+      account_id:
+        type: integer
+      amount:
+        type: number
+      category_id:
+        type: integer
+      date:
+        type: string
+      description:
+        type: string
+      type:
+        $ref: '#/definitions/model.TransactionType'
     type: object
   dto.TransactionResponse:
     properties:
@@ -121,12 +149,15 @@ definitions:
     type: object
   dto.UpdateAccountRequest:
     properties:
+      initial_balance:
+        type: number
       name:
         minLength: 2
         type: string
       type:
         $ref: '#/definitions/model.AccountType'
     required:
+    - initial_balance
     - name
     - type
     type: object
@@ -142,11 +173,16 @@ definitions:
         type: string
       description:
         type: string
+      destination_account_id:
+        type: integer
+      type:
+        $ref: '#/definitions/model.TransactionType'
     required:
     - account_id
     - amount
     - date
     - description
+    - type
     type: object
   dto.UserResponse:
     properties:
@@ -158,16 +194,6 @@ definitions:
         type: integer
       name:
         type: string
-    type: object
-  handlers.LoginRequest:
-    properties:
-      email:
-        type: string
-      password:
-        type: string
-    required:
-    - email
-    - password
     type: object
   model.AccountType:
     enum:
@@ -379,16 +405,22 @@ paths:
         name: credentials
         required: true
         schema:
-          $ref: '#/definitions/handlers.LoginRequest'
+          $ref: '#/definitions/dto.LoginRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/dto.LoginResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
       summary: Realiza o login do usuário
       tags:
       - auth
@@ -499,7 +531,37 @@ paths:
       - categories
   /transactions:
     get:
-      description: Retorna uma lista de todas as transações para o usuário logado
+      description: Retrieves a list of transactions for the authenticated user, with
+        optional filters.
+      parameters:
+      - description: Search text in description (case-insensitive)
+        in: query
+        name: description
+        type: string
+      - description: Filter by type (income, expense, transfer)
+        enum:
+        - income
+        - expense
+        - transfer
+        in: query
+        name: type
+        type: string
+      - description: Filter by a specific account Id
+        in: query
+        name: account_id
+        type: integer
+      - description: 'Filter by start date (format: YYYY-MM-DD)'
+        in: query
+        name: start_date
+        type: string
+      - description: 'Filter by end date (format: YYYY-MM-DD)'
+        in: query
+        name: end_date
+        type: string
+      - description: Filter by one or more category Ids (comma-separated, e.g., 1,5,8)
+        in: query
+        name: category_ids
+        type: string
       produces:
       - application/json
       responses:
@@ -509,13 +571,9 @@ paths:
             items:
               $ref: '#/definitions/dto.TransactionResponse'
             type: array
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Lista as transações do usuário
+      summary: Lists and filters user transactions
       tags:
       - transactions
     post:
@@ -552,7 +610,7 @@ paths:
       - transactions
   /transactions/{id}:
     delete:
-      description: Remove uma transação do sistema pelo seu ID
+      description: Remove uma transação do sistema pelo seu Id
       parameters:
       - description: Id da Transação
         in: path
@@ -592,13 +650,50 @@ paths:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Busca uma transação pelo ID
+      summary: Busca uma transação pelo Id
+      tags:
+      - transactions
+    patch:
+      consumes:
+      - application/json
+      description: Atualiza um ou mais campos de uma transação. Apenas os campos fornecidos
+        no corpo serão alterados.
+      parameters:
+      - description: Transaction Id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Fields to Update
+        in: body
+        name: transaction
+        required: true
+        schema:
+          $ref: '#/definitions/dto.PatchTransactionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.TransactionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Atualiza uma transação parcialmente
       tags:
       - transactions
     put:
       consumes:
       - application/json
-      description: Atualiza os detalhes de uma transação com base no seu ID
+      description: Atualiza os detalhes de uma transação com base no seu Id
       parameters:
       - description: Id da Transação
         in: path

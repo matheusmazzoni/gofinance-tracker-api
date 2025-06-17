@@ -5,10 +5,13 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/matheusmazzoni/gofinance-tracker-api/internal/api/dto"
 	"github.com/matheusmazzoni/gofinance-tracker-api/internal/model"
+	"github.com/matheusmazzoni/gofinance-tracker-api/internal/repository"
 	"github.com/matheusmazzoni/gofinance-tracker-api/internal/service"
 )
 
@@ -63,19 +66,63 @@ func (h *TransactionHandler) CreateTransaction(c *gin.Context) {
 }
 
 // ListTransactions godoc
-//
-//	@Summary		Lista as transações do usuário
-//	@Description	Retorna uma lista de todas as transações para o usuário logado
+//	@Summary		Lists and filters user transactions
+//	@Description	Retrieves a list of transactions for the authenticated user, with optional filters.
 //	@Tags			transactions
 //	@Produce		json
-//	@Success		200	{array}		dto.TransactionResponse
-//	@Failure		500	{object}	dto.ErrorResponse
+//	@Param			description		query	string	false	"Search text in description (case-insensitive)"
+//	@Param			type			query	string	false	"Filter by type (income, expense, transfer)"	Enums(income, expense, transfer)
+//	@Param			account_id		query	int		false	"Filter by a specific account Id"
+//	@Param			start_date		query	string	false	"Filter by start date (format: YYYY-MM-DD)"
+//	@Param			end_date		query	string	false	"Filter by end date (format: YYYY-MM-DD)"
+//	@Param			category_ids	query	string	false	"Filter by one or more category Ids (comma-separated, e.g., 1,5,8)"
+//	@Success		200				{array}	dto.TransactionResponse
 //	@Security		BearerAuth
 //	@Router			/transactions [get]
 func (h *TransactionHandler) ListTransactions(c *gin.Context) {
 	userId := c.MustGet("userId").(int64)
 
-	transactions, err := h.service.ListTransactionsByUserId(c.Request.Context(), userId)
+	// Create the filters struct by parsing query parameters
+	var filters repository.ListTransactionFilters
+
+	if description := c.Query("description"); description != "" {
+		filters.Description = &description
+	}
+	if txTypeStr := c.Query("type"); txTypeStr != "" {
+		txType := model.TransactionType(txTypeStr)
+		filters.Type = &txType
+	}
+	if accountIdStr := c.Query("account_id"); accountIdStr != "" {
+		if accountId, err := strconv.ParseInt(accountIdStr, 10, 64); err == nil {
+			filters.AccountId = &accountId
+		}
+	}
+	if startDateStr := c.Query("start_date"); startDateStr != "" {
+		if startDate, err := time.Parse("2006-01-02", startDateStr); err == nil {
+			filters.StartDate = &startDate
+		}
+	}
+	if endDateStr := c.Query("end_date"); endDateStr != "" {
+		if endDate, err := time.Parse("2006-01-02", endDateStr); err == nil {
+			// To include the whole day, we set the time to the end of the day.
+			endOfDay := endDate.Add(23*time.Hour + 59*time.Minute + 59*time.Second)
+			filters.EndDate = &endOfDay
+		}
+	}
+	if categoryIdsStr := c.Query("category_ids"); categoryIdsStr != "" {
+		idsStr := strings.Split(categoryIdsStr, ",")
+		ids := make([]int64, 0, len(idsStr))
+		for _, idStr := range idsStr {
+			if id, err := strconv.ParseInt(idStr, 10, 64); err == nil {
+				ids = append(ids, id)
+			}
+		}
+		if len(ids) > 0 {
+			filters.CategoryIds = ids
+		}
+	}
+
+	transactions, err := h.service.ListTransactions(c.Request.Context(), userId, filters)
 	if err != nil {
 		dto.SendErrorResponse(c, http.StatusInternalServerError, "failed to list transactions")
 		return
@@ -103,7 +150,7 @@ func (h *TransactionHandler) ListTransactions(c *gin.Context) {
 
 // GetTransaction godoc
 //
-//	@Summary		Busca uma transação pelo ID
+//	@Summary		Busca uma transação pelo Id
 //	@Description	Retorna os detalhes de uma única transação
 //	@Tags			transactions
 //	@Produce		json
@@ -145,7 +192,7 @@ func (h *TransactionHandler) GetTransaction(c *gin.Context) {
 // UpdateTransaction godoc
 //
 //	@Summary		Atualiza uma transação existente
-//	@Description	Atualiza os detalhes de uma transação com base no seu ID
+//	@Description	Atualiza os detalhes de uma transação com base no seu Id
 //	@Tags			transactions
 //	@Accept			json
 //	@Produce		json
@@ -167,6 +214,8 @@ func (h *TransactionHandler) UpdateTransaction(c *gin.Context) {
 	}
 
 	tx := model.Transaction{
+		Id:          id,
+		UserId:      userId,
 		Description: req.Description,
 		Amount:      req.Amount,
 		Date:        req.Date,
@@ -175,7 +224,7 @@ func (h *TransactionHandler) UpdateTransaction(c *gin.Context) {
 		CategoryId:  req.CategoryId,
 	}
 
-	updatedTx, err := h.service.UpdateTransaction(c.Request.Context(), id, userId, tx)
+	updatedTx, err := h.service.UpdateTransaction(c.Request.Context(), tx)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			dto.SendErrorResponse(c, http.StatusNotFound, "transaction not found")
@@ -205,21 +254,21 @@ func (h *TransactionHandler) UpdateTransaction(c *gin.Context) {
 // Em: internal/api/handlers/transaction_handler.go
 
 // PatchTransaction godoc
-// @Summary      Atualiza uma transação parcialmente
-// @Description  Atualiza um ou mais campos de uma transação. Apenas os campos fornecidos no corpo serão alterados.
-// @Tags         transactions
-// @Accept       json
-// @Produce      json
-// @Param        id          path int true "Transaction ID"
-// @Param        transaction body dto.PatchTransactionRequest true "Fields to Update"
-// @Success      200 {object} dto.TransactionResponse
-// @Failure      400 {object} dto.ErrorResponse
-// @Failure      404 {object} dto.ErrorResponse
-// @Security     BearerAuth
-// @Router       /transactions/{id} [patch]
+//	@Summary		Atualiza uma transação parcialmente
+//	@Description	Atualiza um ou mais campos de uma transação. Apenas os campos fornecidos no corpo serão alterados.
+//	@Tags			transactions
+//	@Accept			json
+//	@Produce		json
+//	@Param			id			path		int							true	"Transaction Id"
+//	@Param			transaction	body		dto.PatchTransactionRequest	true	"Fields to Update"
+//	@Success		200			{object}	dto.TransactionResponse
+//	@Failure		400			{object}	dto.ErrorResponse
+//	@Failure		404			{object}	dto.ErrorResponse
+//	@Security		BearerAuth
+//	@Router			/transactions/{id} [patch]
 func (h *TransactionHandler) PatchTransaction(c *gin.Context) {
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	userID := c.MustGet("userId").(int64)
+	userId := c.MustGet("userId").(int64)
 
 	var req dto.PatchTransactionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -227,7 +276,7 @@ func (h *TransactionHandler) PatchTransaction(c *gin.Context) {
 		return
 	}
 
-	updatedTx, err := h.service.PatchTransaction(c.Request.Context(), id, userID, req)
+	updatedTx, err := h.service.PatchTransaction(c.Request.Context(), id, userId, req)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			dto.SendErrorResponse(c, http.StatusNotFound, "transaction not found")
@@ -256,7 +305,7 @@ func (h *TransactionHandler) PatchTransaction(c *gin.Context) {
 // DeleteTransaction godoc
 //
 //	@Summary		Deleta uma transação
-//	@Description	Remove uma transação do sistema pelo seu ID
+//	@Description	Remove uma transação do sistema pelo seu Id
 //	@Tags			transactions
 //	@Param			id	path	int	true	"Id da Transação"
 //	@Success		204

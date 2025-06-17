@@ -276,7 +276,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handlers.LoginRequest"
+                            "$ref": "#/definitions/dto.LoginRequest"
                         }
                     }
                 ],
@@ -284,10 +284,19 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/dto.LoginResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
                         }
                     }
                 }
@@ -469,14 +478,57 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retorna uma lista de todas as transações para o usuário logado",
+                "description": "Retrieves a list of transactions for the authenticated user, with optional filters.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "transactions"
                 ],
-                "summary": "Lista as transações do usuário",
+                "summary": "Lists and filters user transactions",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Search text in description (case-insensitive)",
+                        "name": "description",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "income",
+                            "expense",
+                            "transfer"
+                        ],
+                        "type": "string",
+                        "description": "Filter by type (income, expense, transfer)",
+                        "name": "type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Filter by a specific account Id",
+                        "name": "account_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by start date (format: YYYY-MM-DD)",
+                        "name": "start_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by end date (format: YYYY-MM-DD)",
+                        "name": "end_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by one or more category Ids (comma-separated, e.g., 1,5,8)",
+                        "name": "category_ids",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -485,12 +537,6 @@
                             "items": {
                                 "$ref": "#/definitions/dto.TransactionResponse"
                             }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/dto.ErrorResponse"
                         }
                     }
                 }
@@ -559,7 +605,7 @@
                 "tags": [
                     "transactions"
                 ],
-                "summary": "Busca uma transação pelo ID",
+                "summary": "Busca uma transação pelo Id",
                 "parameters": [
                     {
                         "type": "integer",
@@ -590,7 +636,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Atualiza os detalhes de uma transação com base no seu ID",
+                "description": "Atualiza os detalhes de uma transação com base no seu Id",
                 "consumes": [
                     "application/json"
                 ],
@@ -646,7 +692,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Remove uma transação do sistema pelo seu ID",
+                "description": "Remove uma transação do sistema pelo seu Id",
                 "tags": [
                     "transactions"
                 ],
@@ -663,6 +709,62 @@
                 "responses": {
                     "204": {
                         "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Atualiza um ou mais campos de uma transação. Apenas os campos fornecidos no corpo serão alterados.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "transactions"
+                ],
+                "summary": "Atualiza uma transação parcialmente",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Transaction Id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to Update",
+                        "name": "transaction",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.PatchTransactionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.TransactionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
                     },
                     "404": {
                         "description": "Not Found",
@@ -762,7 +864,6 @@
             "type": "object",
             "properties": {
                 "balance": {
-                    "description": "Adicionaremos a lógica para calcular isso depois",
                     "type": "number"
                 },
                 "created_at": {
@@ -770,6 +871,9 @@
                 },
                 "id": {
                     "type": "integer"
+                },
+                "initial_balance": {
+                    "type": "number"
                 },
                 "name": {
                     "type": "string"
@@ -808,10 +912,14 @@
         "dto.CreateAccountRequest": {
             "type": "object",
             "required": [
+                "initial_balance",
                 "name",
                 "type"
             ],
             "properties": {
+                "initial_balance": {
+                    "type": "number"
+                },
                 "name": {
                     "type": "string",
                     "minLength": 2
@@ -831,13 +939,6 @@
         },
         "dto.CreateTransactionRequest": {
             "type": "object",
-            "required": [
-                "account_id",
-                "amount",
-                "date",
-                "description",
-                "type"
-            ],
             "properties": {
                 "account_id": {
                     "type": "integer"
@@ -895,6 +996,52 @@
                 }
             }
         },
+        "dto.LoginRequest": {
+            "type": "object",
+            "required": [
+                "email",
+                "password"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.LoginResponse": {
+            "type": "object",
+            "properties": {
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.PatchTransactionRequest": {
+            "type": "object",
+            "properties": {
+                "account_id": {
+                    "type": "integer"
+                },
+                "amount": {
+                    "type": "number"
+                },
+                "category_id": {
+                    "type": "integer"
+                },
+                "date": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "type": {
+                    "$ref": "#/definitions/model.TransactionType"
+                }
+            }
+        },
         "dto.TransactionResponse": {
             "type": "object",
             "properties": {
@@ -936,10 +1083,14 @@
         "dto.UpdateAccountRequest": {
             "type": "object",
             "required": [
+                "initial_balance",
                 "name",
                 "type"
             ],
             "properties": {
+                "initial_balance": {
+                    "type": "number"
+                },
                 "name": {
                     "type": "string",
                     "minLength": 2
@@ -955,7 +1106,8 @@
                 "account_id",
                 "amount",
                 "date",
-                "description"
+                "description",
+                "type"
             ],
             "properties": {
                 "account_id": {
@@ -972,6 +1124,12 @@
                 },
                 "description": {
                     "type": "string"
+                },
+                "destination_account_id": {
+                    "type": "integer"
+                },
+                "type": {
+                    "$ref": "#/definitions/model.TransactionType"
                 }
             }
         },
@@ -988,21 +1146,6 @@
                     "type": "integer"
                 },
                 "name": {
-                    "type": "string"
-                }
-            }
-        },
-        "handlers.LoginRequest": {
-            "type": "object",
-            "required": [
-                "email",
-                "password"
-            ],
-            "properties": {
-                "email": {
-                    "type": "string"
-                },
-                "password": {
                     "type": "string"
                 }
             }

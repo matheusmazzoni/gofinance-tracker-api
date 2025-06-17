@@ -158,3 +158,88 @@ func TestTransactionRepository(t *testing.T) {
 		require.NoError(err)
 	})
 }
+
+// TestTransactionRepositoryListWithFilters tests the dynamic filtering logic.
+func TestTransactionRepositoryListWithFilters(t *testing.T) {
+
+	// ARRANGE: Setup a rich dataset to filter against.
+	ctx, require, userRepo, accountRepo, txRepo := setupTestTransaction(t, testDB)
+
+	userId, _ := userRepo.Create(ctx, model.User{Name: "Filter User", Email: "filter@test.com", PasswordHash: "hash"})
+	acc1Id, _ := accountRepo.Create(ctx, model.Account{UserId: userId, Name: "Bank A", Type: model.Checking})
+	catFoodId, _ := NewCategoryRepository(testDB).Create(ctx, model.Category{UserId: userId, Name: "Food"})
+	catTransportId, _ := NewCategoryRepository(testDB).Create(ctx, model.Category{UserId: userId, Name: "Transport"})
+
+	// Create a diverse set of transactions
+	_, _ = txRepo.Create(ctx, model.Transaction{UserId: userId, AccountId: acc1Id, CategoryId: &catFoodId, Description: "Supermarket groceries", Amount: decimal.NewFromInt(150), Type: model.Expense, Date: time.Date(2025, 6, 10, 0, 0, 0, 0, time.UTC)})
+	_, _ = txRepo.Create(ctx, model.Transaction{UserId: userId, AccountId: acc1Id, CategoryId: &catTransportId, Description: "Bus fare", Amount: decimal.NewFromInt(5), Type: model.Expense, Date: time.Date(2025, 6, 12, 0, 0, 0, 0, time.UTC)})
+	_, _ = txRepo.Create(ctx, model.Transaction{UserId: userId, AccountId: acc1Id, Description: "Monthly Salary", Amount: decimal.NewFromInt(5000), Type: model.Income, Date: time.Date(2025, 6, 5, 0, 0, 0, 0, time.UTC)})
+	_, _ = txRepo.Create(ctx, model.Transaction{UserId: userId, AccountId: acc1Id, CategoryId: &catFoodId, Description: "Restaurant dinner", Amount: decimal.NewFromInt(80), Type: model.Expense, Date: time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC)})
+
+	// We use table-driven tests to check multiple filter combinations.
+	testCases := []struct {
+		name              string
+		filters           ListTransactionFilters
+		expectedCount     int
+		expectedFirstDesc string
+	}{
+		{
+			name:              "no filters should return all transactions",
+			filters:           ListTransactionFilters{},
+			expectedCount:     4,
+			expectedFirstDesc: "Restaurant dinner", // Ordered by date DESC
+		},
+		{
+			name:              "filter by description (groceries)",
+			filters:           ListTransactionFilters{Description: testhelper.Ptr("groceries")},
+			expectedCount:     1,
+			expectedFirstDesc: "Supermarket groceries",
+		},
+		{
+			name:              "filter by type (income)",
+			filters:           ListTransactionFilters{Type: testhelper.Ptr(model.Income)},
+			expectedCount:     1,
+			expectedFirstDesc: "Monthly Salary",
+		},
+		{
+			name: "filter by date range",
+			filters: ListTransactionFilters{
+				StartDate: testhelper.Ptr(time.Date(2025, 6, 11, 0, 0, 0, 0, time.UTC)),
+				EndDate:   testhelper.Ptr(time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC)),
+			},
+			expectedCount:     2,
+			expectedFirstDesc: "Restaurant dinner",
+		},
+		{
+			name:              "filter by multiple category Ids",
+			filters:           ListTransactionFilters{CategoryIds: []int64{catFoodId, catTransportId}},
+			expectedCount:     3,
+			expectedFirstDesc: "Restaurant dinner",
+		},
+		{
+			name: "combined filters (food expenses in a date range)",
+			filters: ListTransactionFilters{
+				Type:        testhelper.Ptr(model.Expense),
+				CategoryIds: []int64{catFoodId},
+				StartDate:   testhelper.Ptr(time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)),
+				EndDate:     testhelper.Ptr(time.Date(2025, 6, 11, 0, 0, 0, 0, time.UTC)),
+			},
+			expectedCount:     1,
+			expectedFirstDesc: "Supermarket groceries",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// ACT
+			transactions, err := txRepo.List(ctx, userId, tc.filters)
+
+			// ASSERT
+			require.NoError(err)
+			require.Len(transactions, tc.expectedCount)
+			if tc.expectedCount > 0 {
+				require.Equal(tc.expectedFirstDesc, transactions[0].Description)
+			}
+		})
+	}
+}
