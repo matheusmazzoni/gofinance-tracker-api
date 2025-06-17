@@ -28,7 +28,7 @@ test:
 
 swag-docs:
 	@swag fmt
-	@swag init -g $(CMD_PATH)/main.go 
+	@swag init -g $(CMD_PATH)/main.go -o ./api
 
 docker-build:
 	@echo "Building Docker image..."

@@ -6,7 +6,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 
-	_ "github.com/matheusmazzoni/gofinance-tracker-api/docs"
+	_ "github.com/matheusmazzoni/gofinance-tracker-api/api"
 	"github.com/matheusmazzoni/gofinance-tracker-api/internal/config"
 	"github.com/matheusmazzoni/gofinance-tracker-api/internal/db"
 	"github.com/matheusmazzoni/gofinance-tracker-api/internal/logger"

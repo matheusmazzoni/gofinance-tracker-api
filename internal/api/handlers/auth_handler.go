@@ -28,8 +28,8 @@ func NewAuthHandler(s *service.AuthService) *AuthHandler {
 //	@Produce		json
 //	@Param			credentials	body		dto.LoginRequest	true	"Credenciais de Login"
 //	@Success		200			{object}	dto.LoginResponse
-//	@Failure		401	{object}	dto.ErrorResponse
-//	@Failure		400	{object}	dto.ErrorResponse
+//	@Failure		401			{object}	dto.ErrorResponse
+//	@Failure		400			{object}	dto.ErrorResponse
 //	@Router			/auth/login [post]
 func (h *AuthHandler) Login(c *gin.Context) {
 	logger := zerolog.Ctx(c.Request.Context()).With().Str("handler", "AuthHandlerLogin").Logger()

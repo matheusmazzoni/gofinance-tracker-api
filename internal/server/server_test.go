@@ -705,7 +705,7 @@ func TestTransactionRoutes(t *testing.T) {
 	savingsAccountId, _ := accountRepo.Create(ctx, model.Account{UserId: userId, Name: "Savings Account", Type: model.Savings})
 	foodCategoryId, _ := categoryRepo.Create(ctx, model.Category{UserId: userId, Name: "Food"})
 
-	var createdExpenseId int64
+	var createdExpense model.Transaction
 
 	t.Run("CreateTransactions", func(t *testing.T) {
 		t.Run("should create an expense transaction successfully", func(t *testing.T) {
@@ -733,7 +733,10 @@ func TestTransactionRoutes(t *testing.T) {
 			err := json.Unmarshal(recorder.Body.Bytes(), &resp)
 			require.NoError(err)
 			require.NotZero(resp.Id)
-			createdExpenseId = resp.Id // Save for later tests
+
+			// Save for later tests
+			createdExpense.Id = resp.Id
+			createdExpense.Description = expenseDTO.Description
 		})
 
 		t.Run("should create a transfer transaction successfully", func(t *testing.T) {
@@ -783,12 +786,49 @@ func TestTransactionRoutes(t *testing.T) {
 			assert.Contains(t, recorder.Body.String(), "destination account is required for a transfer")
 		})
 	})
+	t.Run("ListTransactions", func(t *testing.T) {
+		require.NotZero(t, createdExpense.Id, "Create test must run first")
+		t.Run("should get a transaction by filter successfully", func(t *testing.T) {
+			url := "/v1/transactions?description=" + createdExpense.Description
+			respRecorder := testhelper.MakeAPIRequest(t, testServer.router, "GET", url, token, nil)
+			var transactions []dto.TransactionResponse
+			err := json.Unmarshal(respRecorder.Body.Bytes(), &transactions)
+			require.NoError(err)
+
+			// Assert
+			require.Equal(http.StatusOK, respRecorder.Code)
+			assert.Len(t, transactions, 1, "should have the correct number of transactions")
+		})
+		t.Run("should get no transaction by wrong filter value", func(t *testing.T) {
+			url := "/v1/transactions?description=test"
+			respRecorder := testhelper.MakeAPIRequest(t, testServer.router, "GET", url, token, nil)
+			var transactions []dto.TransactionResponse
+			err := json.Unmarshal(respRecorder.Body.Bytes(), &transactions)
+			require.NoError(err)
+
+			// Assert
+			require.Equal(http.StatusOK, respRecorder.Code)
+			assert.Len(t, transactions, 0, "should have the correct number of transactions")
+		})
+		t.Run("should get transactions ignoring wrong filter key", func(t *testing.T) {
+			url := "/v1/transactions?unknowfilter=" + createdExpense.Description
+			respRecorder := testhelper.MakeAPIRequest(t, testServer.router, "GET", url, token, nil)
+			var transactions []dto.TransactionResponse
+			err := json.Unmarshal(respRecorder.Body.Bytes(), &transactions)
+			require.NoError(err)
+
+			// Assert
+			require.Equal(http.StatusOK, respRecorder.Code)
+			assert.Len(t, transactions, 2, "should have the correct number of transactions")
+		})
+
+	})
 	t.Run("GetTransaction", func(t *testing.T) {
-		require.NotZero(t, createdExpenseId, "Create test must run first")
+		require.NotZero(t, createdExpense.Id, "Create test must run first")
 
 		t.Run("should get a transaction by Id successfully", func(t *testing.T) {
 			// Arrange
-			url := fmt.Sprintf("/v1/transactions/%d", createdExpenseId)
+			url := fmt.Sprintf("/v1/transactions/%d", createdExpense.Id)
 			req, _ := http.NewRequest("GET", url, nil)
 			req.Header.Set("Authorization", "Bearer "+token)
 			recorder := httptest.NewRecorder()
@@ -807,7 +847,7 @@ func TestTransactionRoutes(t *testing.T) {
 		})
 	})
 	t.Run("PatchTransaction", func(t *testing.T) {
-		require.NotZero(t, createdExpenseId, "Create test must run first")
+		require.NotZero(t, createdExpense.Id, "Create test must run first")
 
 		t.Run("should partially update a transaction", func(t *testing.T) {
 			// Arrange
@@ -817,7 +857,7 @@ func TestTransactionRoutes(t *testing.T) {
 				Description: &description,
 			}
 			body, _ := json.Marshal(patchDTO)
-			url := fmt.Sprintf("/v1/transactions/%d", createdExpenseId)
+			url := fmt.Sprintf("/v1/transactions/%d", createdExpense.Id)
 			req, _ := http.NewRequest("PATCH", url, bytes.NewBuffer(body))
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("Authorization", "Bearer "+token)

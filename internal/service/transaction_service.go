@@ -83,17 +83,14 @@ func (s *TransactionService) GetTransactionById(ctx context.Context, id, userId 
 	return s.repo.GetById(ctx, id, userId)
 }
 
-// ListTransactionsByUserId lists all transactions for a specific user.
-func (s *TransactionService) ListTransactionsByUserId(ctx context.Context, userId int64) ([]model.Transaction, error) {
-	return s.repo.ListByUserId(ctx, userId)
+// ListTransactions lists all transactions for a specific user.
+func (s *TransactionService) ListTransactions(ctx context.Context, userId int64, filters repository.ListTransactionFilters) ([]model.Transaction, error) {
+	return s.repo.List(ctx, userId, filters)
 }
 
 // UpdateTransaction handles the logic for updating an entire transaction entity.
 // It requires the userId to ensure authorization.
-func (s *TransactionService) UpdateTransaction(ctx context.Context, id, userId int64, tx model.Transaction) (*model.Transaction, error) {
-	// First, ensure the object to be updated has the correct ID and ownership.
-	tx.Id = id
-	tx.UserId = userId
+func (s *TransactionService) UpdateTransaction(ctx context.Context, tx model.Transaction) (*model.Transaction, error) {
 
 	// Business validations for the new data.
 	if tx.Amount.IsNegative() || tx.Amount.IsZero() {
@@ -115,7 +112,7 @@ func (s *TransactionService) UpdateTransaction(ctx context.Context, id, userId i
 	}
 
 	// Return the newly updated transaction to the handler.
-	return s.repo.GetById(ctx, id, userId)
+	return s.repo.GetById(ctx, tx.Id, tx.UserId)
 }
 
 // PatchTransaction applies a partial update to a transaction. It fetches the

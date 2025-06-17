@@ -3,7 +3,10 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"time"
 
+	"github.com/Masterminds/squirrel"
 	"github.com/jmoiron/sqlx"
 	"github.com/matheusmazzoni/gofinance-tracker-api/internal/model"
 )
@@ -15,8 +18,19 @@ type TransactionRepository interface {
 	GetById(ctx context.Context, id, userId int64) (*model.Transaction, error)
 	Update(ctx context.Context, tx model.Transaction) error
 	Delete(ctx context.Context, id int64, userId int64) error
-	ListByUserId(ctx context.Context, userId int64) ([]model.Transaction, error)
+	List(ctx context.Context, userId int64, filters ListTransactionFilters) ([]model.Transaction, error)
 	DeleteByAccountId(ctx context.Context, userId, accountId int64) error
+}
+
+// ListTransactionFilters holds all possible optional filters for listing transactions.
+// We use pointers so we can differentiate between a zero value and a filter that wasn't provided.
+type ListTransactionFilters struct {
+	Description *string
+	StartDate   *time.Time
+	EndDate     *time.Time
+	Type        *model.TransactionType
+	AccountId   *int64
+	CategoryIds []int64 // A slice to allow filtering by multiple categories
 }
 
 // pqTransactionRepository é a implementação em PostgreSQL do TransactionRepository.
@@ -119,21 +133,52 @@ func (r *pqTransactionRepository) Delete(ctx context.Context, id int64, userId i
 	return nil
 }
 
-// ListByUserId busca todas as transações de um usuário específico.
-func (r *pqTransactionRepository) ListByUserId(ctx context.Context, userId int64) ([]model.Transaction, error) {
+// List busca todas as transações de um usuário específico.
+func (r *pqTransactionRepository) List(ctx context.Context, userId int64, filters ListTransactionFilters) ([]model.Transaction, error) {
+	// Use squirrel's builder for PostgreSQL ($1, $2 placeholders)
+	psql := squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar)
+
+	// Start building the query
+	queryBuilder := psql.Select(
+		"t.*",
+		"a.name as account_name",
+		"c.name as category_name",
+	).
+		From("transactions t").
+		Join("accounts a ON t.account_id = a.id").
+		LeftJoin("categories c ON t.category_id = c.id").
+		Where(squirrel.Eq{"t.user_id": userId}). // Mandatory filter for security
+		OrderBy("t.date DESC, t.created_at DESC")
+
+	// Apply optional filters dynamically
+	if filters.Description != nil && *filters.Description != "" {
+		// Using ILIKE for case-insensitive search in PostgreSQL
+		queryBuilder = queryBuilder.Where(squirrel.ILike{"t.description": "%" + *filters.Description + "%"})
+	}
+	if filters.Type != nil {
+		queryBuilder = queryBuilder.Where(squirrel.Eq{"t.type": *filters.Type})
+	}
+	if filters.AccountId != nil {
+		queryBuilder = queryBuilder.Where(squirrel.Eq{"t.account_id": *filters.AccountId})
+	}
+	if filters.StartDate != nil {
+		queryBuilder = queryBuilder.Where(squirrel.GtOrEq{"t.date": *filters.StartDate}) // GtOrEq means >=
+	}
+	if filters.EndDate != nil {
+		queryBuilder = queryBuilder.Where(squirrel.LtOrEq{"t.date": *filters.EndDate}) // LtOrEq means <=
+	}
+	if len(filters.CategoryIds) > 0 {
+		queryBuilder = queryBuilder.Where(squirrel.Eq{"t.category_id": filters.CategoryIds}) // Handles IN (...) clause
+	}
+
+	// Generate the final SQL query and arguments
+	sql, args, err := queryBuilder.ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build list transaction query: %w", err)
+	}
+
 	var transactions []model.Transaction
-	query := `
-		SELECT 
-			t.*, 
-			a.name as account_name,
-			c.name as category_name
-		FROM transactions t
-		JOIN accounts a ON t.account_id = a.id
-		LEFT JOIN categories c ON t.category_id = c.id
-		WHERE t.user_id = $1
-		ORDER BY t.date DESC
-	`
-	err := r.db.SelectContext(ctx, &transactions, query, userId)
+	err = r.db.SelectContext(ctx, &transactions, sql, args...)
 	return transactions, err
 }
 
