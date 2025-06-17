@@ -11,6 +11,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/matheusmazzoni/gofinance-tracker-api/internal/model"
 	"github.com/shopspring/decimal"
+	"github.com/rs/zerolog"
 )
 
 // TransactionRepository define a interface para o acesso de dados de transações.
@@ -53,17 +54,19 @@ func (r *pqTransactionRepository) Create(ctx context.Context, tx model.Transacti
 		VALUES (:user_id, :description, :amount, :date, :type, :account_id, :destination_account_id, :category_id)
 		RETURNING id
 	`
-	// Usamos NamedExec para que o sqlx mapeie os campos da struct para os parâmetros da query.
 	rows, err := r.db.NamedQueryContext(ctx, query, tx)
 	if err != nil {
 		return 0, err
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			zerolog.Ctx(ctx).Error().Err(err).Msg("Error closing rows")
+		}
+	}()
 
 	var id int64
 	if rows.Next() {
-		err = rows.Scan(&id)
-		if err != nil {
+		if err := rows.Scan(&id); err != nil {
 			return 0, err
 		}
 	}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/matheusmazzoni/gofinance-tracker-api/internal/model"
+	"github.com/rs/zerolog"
 )
 
 type BudgetRepository interface {
@@ -36,7 +37,11 @@ func (r *pqBudgetRepository) Create(ctx context.Context, budget model.Budget) (i
 	if err != nil {
 		return 0, err
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			zerolog.Ctx(ctx).Error().Err(err).Msg("Error closing rows")
+		}
+	}()
 
 	if rows.Next() {
 		var id int64
