@@ -1,0 +1,89 @@
+# Dependências
+node_modules/
+.pnpm/
+.yarn/
+.yarn-cache/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Build
+/dist/
+/build/
+/out/
+.vite/
+
+# Vite/React/Next.js/Parcel/CRA
+*.log
+*.tsbuildinfo
+.cache/
+coverage/
+*.local
+.env
+.env.*
+!.env.example
+
+# IDEs/Editors
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# SO/Editor temporários
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Testes
+coverage/
+.nyc_output/
+jest-coverage/
+
+# Relatórios de lint
+eslint-report.html
+stylelint-report.html
+
+# Outras ferramentas
+*.tgz
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.npm/
+.parcel-cache/
+storybook-static/
+.cypress/
+playwright-report/
+allure-results/
+allure-report/
+*.snap
+
+# Arquivos de lock do sistema
+.lock-wscript
+
+# Arquivos de preview do Vite
+.preview/
+
+# Arquivos de configuração locais
+*.local.js
+*.local.ts
+*.local.json
+
+# Arquivos de configuração do Mac
+.AppleDouble
+.LSOverride
+
+# Arquivos de configuração do Windows
+ehthumbs.db
+Icon?
+Desktop.ini
+
+# Arquivos de configuração do Linux
+*~
+
+# Arquivos de configuração do JetBrains
+*.iml
+*.ipr
+*.iws
+out/
