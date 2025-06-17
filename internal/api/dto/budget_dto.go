@@ -8,7 +8,7 @@ import (
 
 // CreateBudgetRequest defines the body for creating a new budget.
 type CreateBudgetRequest struct {
-	CategoryID int64           `json:"category_id" binding:"required"`
+	CategoryId int64           `json:"category_id" binding:"required"`
 	Amount     decimal.Decimal `json:"amount" binding:"required,gt=0"`
 	Month      int             `json:"month" binding:"required,min=1,max=12"`
 	Year       int             `json:"year" binding:"required"`
@@ -22,8 +22,8 @@ type UpdateBudgetRequest struct {
 // BudgetResponse is the DTO for returning a budget with its real-time progress.
 // This is the main object the frontend will consume for the dashboard.
 type BudgetResponse struct {
-	ID           int64           `json:"id"`
-	CategoryID   int64           `json:"category_id"`
+	Id           int64           `json:"id"`
+	CategoryId   int64           `json:"category_id"`
 	CategoryName string          `json:"category_name"`
 	Amount       decimal.Decimal `json:"amount"`       // The planned budget amount
 	SpentAmount  decimal.Decimal `json:"spent_amount"` // The calculated amount spent so far

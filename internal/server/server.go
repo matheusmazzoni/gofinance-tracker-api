@@ -113,9 +113,9 @@ func (s *Server) setupRouter(router *gin.Engine, logger *zerolog.Logger) {
 			budgetRoutes := protected.Group("/budgets")
 			{
 				budgetRoutes.GET("", budgetHandler.ListBudgets)
-				// budgetRoutes.POST("", budgetHandler.CreateBudget)
-				// budgetRoutes.PUT("/:id", budgetHandler.UpdateBudget)
-				// budgetRoutes.DELETE("/:id", budgetHandler.DeleteBudget)
+				budgetRoutes.POST("", budgetHandler.CreateBudget)
+				budgetRoutes.PUT("/:id", budgetHandler.UpdateBudget)
+				budgetRoutes.DELETE("/:id", budgetHandler.DeleteBudget)
 			}
 
 			categories := protected.Group("/categories")
