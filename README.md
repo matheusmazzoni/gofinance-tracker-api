@@ -46,7 +46,7 @@ Follow these steps to get the API running on your local machine for development 
 
 ### Prerequisites
 
-  * **Go:** Version 1.21 or later.
+  * **Go:** Version 1.24 or later.
   * **Docker & Docker Compose:** Required to run the PostgreSQL database and for running integration tests.
   * **`migrate` CLI:** Install it to manage database migrations. [Installation guide](https://github.com/golang-migrate/migrate/tree/master/cmd/migrate).
 
@@ -60,7 +60,7 @@ cd gofinance-tracker-api
 ### 2\. Install Dependencies
 
 ```sh
-go mod tidy
+make tidy
 ```
 
 ### 3\. Set Up Configuration
@@ -113,21 +113,12 @@ migrate -database ${DATABASE_URL} -path db/migrations up
 
 ## 🏃‍♀️ Running the Application
 
-### For Development (with Live Reload)
-
-Using `air` is the recommended way for development. It will watch for file changes and automatically restart the server.
-
-```sh
-air
-```
-
 ### For Production (or Manually)
 
 Build the binary and run it. The app will be configured from the environment variables.
 
 ```sh
-go build -o ./tmp/main ./cmd/api
-./tmp/main
+make run
 ```
 
 ## 🧪 Running Tests
