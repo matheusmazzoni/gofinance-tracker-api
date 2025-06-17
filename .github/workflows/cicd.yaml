@@ -148,7 +148,17 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Deploy to production
+      - name: Install migrate
         run: |
-          echo "Add your deployment steps here"
-          # Example: kubectl apply, terraform apply, etc. 
+          curl -L https://github.com/golang-migrate/migrate/releases/download/v4.17.1/migrate.linux-amd64.tar.gz | tar xvz
+          sudo mv migrate.linux-amd64 /usr/local/bin/migrate
+
+      - name: Run Database Migrations
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: migrate -database "${DATABASE_URL}" -path db/migrations up
+
+      - name: Build and Deploy Application
+        run: |
+          # Seus passos para fazer o deploy da imagem Docker para o Kubernetes, etc.
+          echo "Deploying new application version..."
