@@ -45,15 +45,15 @@ CREATE TABLE categories (
 );
 
 -- Tabela de Tags: Para classificação flexível e contextual.
-CREATE TABLE tags (
-    id SERIAL PRIMARY KEY,
-    user_id INT NOT NULL,
-    name VARCHAR(100) NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT fk_user FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
-    UNIQUE (user_id, name)
-);
+--CREATE TABLE tags (
+--    id SERIAL PRIMARY KEY,
+--    user_id INT NOT NULL,
+--    name VARCHAR(100) NOT NULL,
+--    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+--    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+--    CONSTRAINT fk_user FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+--    UNIQUE (user_id, name)
+--);
 
 
 -- ========= Bloco 3: Entidade Central (Transações) ==========
@@ -86,13 +86,13 @@ CREATE TABLE transactions (
 -- ========= Bloco 4: Tabelas de Junção e Entidades de Suporte ==========
 
 -- Tabela de Junção (Muitos-para-Muitos): Conecta Transações e Tags.
-CREATE TABLE transaction_tags (
-    transaction_id INT NOT NULL,
-    tag_id INT NOT NULL,
-    PRIMARY KEY (transaction_id, tag_id),
-    CONSTRAINT fk_transaction FOREIGN KEY(transaction_id) REFERENCES transactions(id) ON DELETE CASCADE,
-    CONSTRAINT fk_tag FOREIGN KEY(tag_id) REFERENCES tags(id) ON DELETE CASCADE
-);
+--CREATE TABLE transaction_tags (
+--    transaction_id INT NOT NULL,
+--    tag_id INT NOT NULL,
+--    PRIMARY KEY (transaction_id, tag_id),
+--    CONSTRAINT fk_transaction FOREIGN KEY(transaction_id) REFERENCES transactions(id) ON DELETE CASCADE,
+--    CONSTRAINT fk_tag FOREIGN KEY(tag_id) REFERENCES tags(id) ON DELETE CASCADE
+--);
 
 -- Tabela de Orçamentos (Budgets): Define metas de gastos.
 CREATE TABLE budgets (
@@ -115,7 +115,7 @@ CREATE TABLE budgets (
 
 CREATE INDEX idx_accounts_user_id ON accounts(user_id);
 CREATE INDEX idx_categories_user_id ON categories(user_id);
-CREATE INDEX idx_tags_user_id ON tags(user_id);
+--CREATE INDEX idx_tags_user_id ON tags(user_id);
 CREATE INDEX idx_transactions_user_id ON transactions(user_id);
 CREATE INDEX idx_transactions_account_id ON transactions(account_id);
 CREATE INDEX idx_transactions_type ON transactions(type);

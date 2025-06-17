@@ -3,12 +3,14 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/jmoiron/sqlx"
 	"github.com/matheusmazzoni/gofinance-tracker-api/internal/model"
+	"github.com/shopspring/decimal"
 )
 
 // TransactionRepository define a interface para o acesso de dados de transações.
@@ -20,6 +22,7 @@ type TransactionRepository interface {
 	Delete(ctx context.Context, id int64, userId int64) error
 	List(ctx context.Context, userId int64, filters ListTransactionFilters) ([]model.Transaction, error)
 	DeleteByAccountId(ctx context.Context, userId, accountId int64) error
+	SumExpensesByCategoryAndPeriod(ctx context.Context, userID, categoryID int64, startDate, endDate time.Time) (decimal.Decimal, error)
 }
 
 // ListTransactionFilters holds all possible optional filters for listing transactions.
@@ -192,4 +195,25 @@ func (r *pqTransactionRepository) DeleteByAccountId(ctx context.Context, userId,
 	`
 	_, err := r.db.ExecContext(ctx, query, userId, accountId)
 	return err
+}
+
+// SumExpensesByCategoryAndPeriod calculates the total amount of expenses for a given
+// category within a specific date range for a user.
+func (r *pqTransactionRepository) SumExpensesByCategoryAndPeriod(ctx context.Context, userID, categoryID int64, startDate, endDate time.Time) (decimal.Decimal, error) {
+	var totalExpenses decimal.Decimal
+	query := `
+        SELECT COALESCE(SUM(amount), 0) 
+        FROM transactions
+        WHERE user_id = $1
+          AND category_id = $2
+          AND type = 'expense'
+          AND date >= $3 AND date < $4
+    `
+	// We use GetContext because we expect a single row (the sum) in return.
+	err := r.db.GetContext(ctx, &totalExpenses, query, userID, categoryID, startDate, endDate)
+	// sql.ErrNoRows is not a problem here; it just means the sum is zero, which COALESCE handles.
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return decimal.Zero, err
+	}
+	return totalExpenses, nil
 }

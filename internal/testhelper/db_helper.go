@@ -76,7 +76,7 @@ func SetupTestDB() (*sqlx.DB, testcontainers.Container) {
 // The `RESTART IDENTITY` clause resets primary key sequences, and `CASCADE` removes
 // records in dependent tables.
 func TruncateTables(t *testing.T, db *sqlx.DB) {
-	_, err := db.Exec("TRUNCATE TABLE transaction_tags, budgets, transactions, accounts, categories, tags, users RESTART IDENTITY CASCADE")
+	_, err := db.Exec("TRUNCATE TABLE budgets, transactions, accounts, categories, users RESTART IDENTITY CASCADE")
 	// require.NoError ensures the test fails if the database cleanup is unsuccessful.
 	require.NoError(t, err)
 }
