@@ -9,7 +9,7 @@ import (
 // CreateBudgetRequest defines the body for creating a new budget.
 type CreateBudgetRequest struct {
 	CategoryId int64           `json:"category_id" binding:"required"`
-	Amount     decimal.Decimal `json:"amount" binding:"required,gt=0"`
+	Amount     decimal.Decimal `json:"amount" binding:"required"`
 	Month      int             `json:"month" binding:"required,min=1,max=12"`
 	Year       int             `json:"year" binding:"required"`
 }
