@@ -63,6 +63,11 @@ func (m *MockTransactionRepository) DeleteByAccountId(ctx context.Context, userI
 	return args.Error(0)
 }
 
+func (m *MockTransactionRepository) SumExpensesByCategoryAndPeriod(ctx context.Context, userID, categoryID int64, startDate, endDate time.Time) (decimal.Decimal, error) {
+	args := m.Called(ctx, userID, categoryID, startDate, endDate)
+	return args.Get(0).(decimal.Decimal), args.Error(0)
+}
+
 // TestTransactionService contains all tests for transaction service business logic .
 func TestTransactionService(t *testing.T) {
 	zerolog.SetGlobalLevel(zerolog.Disabled)

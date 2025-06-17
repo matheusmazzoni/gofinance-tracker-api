@@ -53,6 +53,7 @@ func (s *Server) setupRouter(router *gin.Engine, logger *zerolog.Logger) {
 	accountRepo := repository.NewAccountRepository(s.db)
 	categoryRepo := repository.NewCategoryRepository(s.db)
 	transactionRepo := repository.NewTransactionRepository(s.db)
+	budgetRepo := repository.NewBudgetRepository(s.db)
 
 	// Serviços
 	authService := service.NewAuthService(userRepo, s.config.JWTSecretKey)
@@ -60,6 +61,7 @@ func (s *Server) setupRouter(router *gin.Engine, logger *zerolog.Logger) {
 	accountService := service.NewAccountService(accountRepo, transactionRepo)
 	categoryService := service.NewCategoryService(categoryRepo, transactionRepo)
 	transactionService := service.NewTransactionService(transactionRepo, accountRepo)
+	budgetService := service.NewBudgetService(budgetRepo, categoryRepo, transactionRepo)
 
 	// Handlers
 	authHandler := handlers.NewAuthHandler(authService)
@@ -67,6 +69,7 @@ func (s *Server) setupRouter(router *gin.Engine, logger *zerolog.Logger) {
 	accountHandler := handlers.NewAccountHandler(accountService)
 	categoryHandler := handlers.NewCategoryHandler(categoryService)
 	transactionHandler := handlers.NewTransactionHandler(transactionService)
+	budgetHandler := handlers.NewBudgetHandler(budgetService)
 
 	// --- Middlewares Globais ---
 	router.Use(middleware.LoggerMiddleware(*logger))
@@ -93,24 +96,11 @@ func (s *Server) setupRouter(router *gin.Engine, logger *zerolog.Logger) {
 		protected := v1.Group("")
 		protected.Use(middleware.AuthMiddleware(s.config.JWTSecretKey, *logger))
 		{
-			// Rotas de Usuários
 			userRoutes := protected.Group("/users")
 			{
 				userRoutes.GET("/me", userHandler.GetProfile)
 			}
 
-			// Rotas de Transações
-			transactions := protected.Group("/transactions")
-			{
-				transactions.POST("", transactionHandler.CreateTransaction)
-				transactions.GET("", transactionHandler.ListTransactions)
-				transactions.GET("/:id", transactionHandler.GetTransaction)
-				transactions.PUT("/:id", transactionHandler.UpdateTransaction)
-				transactions.PATCH("/:id", transactionHandler.PatchTransaction)
-				transactions.DELETE("/:id", transactionHandler.DeleteTransaction)
-			}
-
-			// Rotas de Contas
 			accounts := protected.Group("/accounts")
 			{
 				accounts.POST("", accountHandler.CreateAccount)
@@ -120,7 +110,14 @@ func (s *Server) setupRouter(router *gin.Engine, logger *zerolog.Logger) {
 				accounts.DELETE("/:id", accountHandler.DeleteAccount)
 			}
 
-			// Rotas de Categorias
+			budgetRoutes := protected.Group("/budgets")
+			{
+				budgetRoutes.GET("", budgetHandler.ListBudgets)
+				// budgetRoutes.POST("", budgetHandler.CreateBudget)
+				// budgetRoutes.PUT("/:id", budgetHandler.UpdateBudget)
+				// budgetRoutes.DELETE("/:id", budgetHandler.DeleteBudget)
+			}
+
 			categories := protected.Group("/categories")
 			{
 				categories.POST("", categoryHandler.CreateCategory)
@@ -128,6 +125,16 @@ func (s *Server) setupRouter(router *gin.Engine, logger *zerolog.Logger) {
 				categories.GET("/:id", categoryHandler.GetCategory)
 				categories.PUT("/:id", categoryHandler.UpdateCategory)
 				categories.DELETE("/:id", categoryHandler.DeleteCategory)
+			}
+
+			transactions := protected.Group("/transactions")
+			{
+				transactions.POST("", transactionHandler.CreateTransaction)
+				transactions.GET("", transactionHandler.ListTransactions)
+				transactions.GET("/:id", transactionHandler.GetTransaction)
+				transactions.PUT("/:id", transactionHandler.UpdateTransaction)
+				transactions.PATCH("/:id", transactionHandler.PatchTransaction)
+				transactions.DELETE("/:id", transactionHandler.DeleteTransaction)
 			}
 		}
 	}
