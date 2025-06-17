@@ -34,7 +34,11 @@ func main() {
 	if err != nil {
 		logger.Fatal().Err(err).Msg("could not connect to the database")
 	}
-	defer database.Close()
+	defer func() {
+		if err := database.Close(); err != nil {
+			logger.Fatal().Err(err).Msg("Error closing database connection")
+		}
+	}()
 
 	// 4. Rodar Migrations
 	if err := db.RunMigrations(cfg.DatabaseURL, "db/migrations", logger); err != nil {

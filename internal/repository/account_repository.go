@@ -7,6 +7,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/matheusmazzoni/gofinance-tracker-api/internal/model"
 	"github.com/shopspring/decimal"
+	"github.com/rs/zerolog"
 )
 
 type AccountRepository interface {
@@ -38,13 +39,19 @@ func (r *pqAccountRepository) Create(ctx context.Context, acc model.Account) (in
 	if err != nil {
 		return 0, err
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			zerolog.Ctx(ctx).Error().Err(err).Msg("Error closing rows")
+		}
+	}()
 
 	var id int64
 	if rows.Next() {
-		err = rows.Scan(&id)
+		if err := rows.Scan(&id); err != nil {
+			return 0, err
+		}
 	}
-	return id, err
+	return id, nil
 }
 
 func (r *pqAccountRepository) GetById(ctx context.Context, id, userId int64) (*model.Account, error) {

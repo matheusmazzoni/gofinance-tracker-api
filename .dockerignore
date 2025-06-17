@@ -1,0 +1,13 @@
+.github/
+.git
+.gitignore
+.env
+*.md
+*.log
+tmp/
+.idea/
+.vscode/
+*.test
+*.out
+vendor/
+docker-compose.yaml

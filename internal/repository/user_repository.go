@@ -5,6 +5,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/matheusmazzoni/gofinance-tracker-api/internal/model"
+	"github.com/rs/zerolog"
 )
 
 type UserRepository interface {
@@ -27,10 +28,16 @@ func (r *pqUserRepository) Create(ctx context.Context, user model.User) (int64, 
 	if err != nil {
 		return 0, err
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			zerolog.Ctx(ctx).Error().Err(err).Msg("Error closing rows")
+		}
+	}()
 	var id int64
 	if rows.Next() {
-		rows.Scan(&id)
+		if err := rows.Scan(&id); err != nil {
+			return 0, err
+		}
 	}
 	return id, nil
 }
