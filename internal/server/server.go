@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -16,37 +18,53 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-// Server encapsula todas as dependências da nossa API.
+// Server encapsulates all dependencies of our API.
+// It now includes the http.Server instance for lifecycle management.
 type Server struct {
-	logger *zerolog.Logger
-	config config.Config
-	db     *sqlx.DB
-	router *gin.Engine
+	config     config.Config
+	db         *sqlx.DB
+	router     *gin.Engine
+	httpServer *http.Server
 }
 
-// NewServer cria e configura uma nova instância do servidor da API.
+// NewServer creates and configures a new instance of the API server.
 func NewServer(cfg config.Config, db *sqlx.DB, logger *zerolog.Logger) *Server {
+	router := gin.New()
+
 	server := &Server{
-		logger: logger,
 		config: cfg,
 		db:     db,
+		router: router,
 	}
 
-	router := gin.Default()
-	server.setupRouter(router, logger)
-	server.router = router
+	server.setupRouter(logger)
+
+	// Create the http.Server instance
+	server.httpServer = &http.Server{
+		Addr:    fmt.Sprintf(":%s", cfg.ServerPort),
+		Handler: server.router,
+	}
 
 	return server
 }
 
-// Start inicia o servidor HTTP na porta configurada.
+// Start runs the HTTP server. This call is blocking.
 func (s *Server) Start() error {
-	serverPort := fmt.Sprintf(":%s", s.config.ServerPort)
-	return s.router.Run(serverPort)
+	// ListenAndServe blocks until an error occurs or the server is shut down.
+	// We check for ErrServerClosed to know if it was a graceful shutdown.
+	if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		return err
+	}
+	return nil
+}
+
+// Shutdown gracefully shuts down the server with a timeout.
+func (s *Server) Shutdown(ctx context.Context) error {
+	return s.httpServer.Shutdown(ctx)
 }
 
 // setupRouter configura todos os middlewares e rotas da API.
-func (s *Server) setupRouter(router *gin.Engine, logger *zerolog.Logger) {
+func (s *Server) setupRouter(logger *zerolog.Logger) {
 	// --- Injeção de Dependências ---
 	// Repositórios
 	userRepo := repository.NewUserRepository(s.db)
@@ -72,15 +90,15 @@ func (s *Server) setupRouter(router *gin.Engine, logger *zerolog.Logger) {
 	budgetHandler := handlers.NewBudgetHandler(budgetService)
 
 	// --- Middlewares Globais ---
-	router.Use(middleware.LoggerMiddleware(*logger))
-	router.Use(cors.New(s.buildCORSConfig()))
+	s.router.Use(middleware.LoggerMiddleware(*logger))
+	s.router.Use(cors.New(s.buildCORSConfig()))
 
 	// --- Registro de Rotas ---
 	// Rota do Swagger
-	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerfiles.Handler))
+	s.router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerfiles.Handler))
 
 	// Agrupamento de rotas v1
-	v1 := router.Group("/v1")
+	v1 := s.router.Group("/v1")
 	{
 		// Rotas Públicas
 		authRoutes := v1.Group("/auth")
@@ -140,36 +158,11 @@ func (s *Server) setupRouter(router *gin.Engine, logger *zerolog.Logger) {
 	}
 }
 
-// buildCORSConfig constrói a configuração de CORS a partir do config.
+// buildCORSConfig builds the CORS configuration.
 func (s *Server) buildCORSConfig() cors.Config {
 	config := cors.DefaultConfig()
-	// Você pode buscar as origins do s.config.CORS.AllowOrigins
-	config.AllowAllOrigins = true // Simplificado por enquanto
-	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
+	config.AllowAllOrigins = true
+	config.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
 	config.AllowHeaders = []string{"Origin", "Content-Type", "Authorization"}
 	return config
-}
-
-func CORSConfig(allowOrigins []string) *cors.Config {
-	// --- CONFIGURAÇÃO DO CORS ---
-	// Esta configuração deve vir ANTES do registro das suas rotas.
-	config := cors.DefaultConfig()
-
-	// Especifique os domínios que podem acessar sua API.
-	// Para desenvolvimento, você pode usar o endereço do seu frontend local.
-	config.AllowOrigins = allowOrigins
-
-	// Em produção, você colocaria o domínio do seu frontend.
-	// Ex: config.AllowOrigins = []string{"https://www.meusistema.com"}
-
-	// Para permitir qualquer origem (NÃO RECOMENDADO PARA PRODUÇÃO):
-	// config.AllowAllOrigins = true
-
-	// Métodos HTTP permitidos
-	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
-
-	// Cabeçalhos HTTP permitidos
-	config.AllowHeaders = []string{"Origin", "Content-Type", "Authorization"}
-
-	return &config
 }
