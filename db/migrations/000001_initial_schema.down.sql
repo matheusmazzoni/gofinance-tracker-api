@@ -6,14 +6,14 @@
 
 
 -- Remove tabelas de junção e de suporte primeiro
-DROP TABLE IF EXISTS transaction_tags;
+--DROP TABLE IF EXISTS transaction_tags;
 DROP TABLE IF EXISTS budgets;
 
 -- Remove a tabela central de transações
 DROP TABLE IF EXISTS transactions;
 
 -- Remove as tabelas primárias
-DROP TABLE IF EXISTS tags;
+--DROP TABLE IF EXISTS tags;
 DROP TABLE IF EXISTS categories;
 DROP TABLE IF EXISTS accounts;
 

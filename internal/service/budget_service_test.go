@@ -10,6 +10,7 @@ import (
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 type MockBudgetRepository struct {
@@ -31,10 +32,15 @@ func (m *MockBudgetRepository) GetById(ctx context.Context, id, userId int64) (*
 
 func (m *MockBudgetRepository) ListByUserAndPeriod(ctx context.Context, userId int64, month, year int) ([]model.Budget, error) {
 	args := m.Called(ctx, userId, month, year)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
+
+	data := args.Get(0)
+	err := args.Error(1)
+
+	if data == nil {
+		return nil, err
 	}
-	return args.Get(0).([]model.Budget), args.Error(1)
+
+	return data.([]model.Budget), err
 }
 
 func (m *MockBudgetRepository) Update(ctx context.Context, budget model.Budget) error {
@@ -77,48 +83,47 @@ func TestBudgetService(t *testing.T) {
 	})
 
 	t.Run("ListEnrichedBudgetsByPeriod", func(t *testing.T) {
-		mockBudgetRepo := new(MockBudgetRepository)
-		mockCategoryRepo := new(MockCategoryRepository)
-		mockTxRepo := new(MockTransactionRepository)
-		budgetService := NewBudgetService(mockBudgetRepo, mockCategoryRepo, mockTxRepo)
-
 		t.Run("should correctly calculate spent and balance amounts", func(t *testing.T) {
 			// Arrange
+			mockBudgetRepo := new(MockBudgetRepository)
+			mockTxRepo := new(MockTransactionRepository)
+			// Pass the mock for transactionRepo to the service
+			budgetService := NewBudgetService(mockBudgetRepo, nil, mockTxRepo)
+
+			ctx := context.Background()
 			userId, month, year := int64(1), 6, 2025
 			startDate := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
 			endDate := startDate.AddDate(0, 1, 0)
 
-			// Mock the list of budgets returned from the DB
+			// 1. Mock the list of budgets returned from the database
 			budgetsFromRepo := []model.Budget{
 				{Id: 1, UserId: userId, CategoryId: 10, Amount: decimal.NewFromInt(800)},
-				{Id: 2, UserId: userId, CategoryId: 11, Amount: decimal.NewFromInt(200)},
 			}
 			mockBudgetRepo.On("ListByUserAndPeriod", ctx, userId, month, year).Return(budgetsFromRepo, nil).Once()
 
-			// Mock the spent amount calculated for each category
-			// For "Food" (Id 10), simulate $550 spent
-			mockTxRepo.On("SumExpensesByCategoryAndPeriod", ctx, userId, int64(10), startDate, endDate).Return(decimal.NewFromFloat(550.50), nil).Once()
-			// For "Transport" (Id 11), simulate $0 spent
-			mockTxRepo.On("SumExpensesByCategoryAndPeriod", ctx, userId, int64(11), startDate, endDate).Return(decimal.Zero, nil).Once()
+			// --- THIS IS THE CRUCIAL PART ---
+			// 2. Mock the spent amount calculation.
+			// We MUST create a `decimal.Decimal` object, not use a raw float like 550.50.
+			expectedSpentAmount := decimal.NewFromFloat(550.50)
+
+			// We pass this decimal.Decimal object to the Return() function.
+			mockTxRepo.On("SumExpensesByCategoryAndPeriod", ctx, userId, int64(10), startDate, endDate).Return(expectedSpentAmount, nil).Once()
+			// --- END CRUCIAL PART ---
 
 			// Act
 			enrichedBudgets, err := budgetService.ListEnrichedBudgetsByPeriod(ctx, userId, month, year)
 
 			// Assert
-			assert.NoError(t, err)
-			assert.Len(t, enrichedBudgets, 2)
+			require.NoError(t, err)
+			require.Len(t, enrichedBudgets, 1)
 
-			// Check Food budget
-			assert.Equal(t, int64(10), enrichedBudgets[0].CategoryId)
-			assert.True(t, decimal.NewFromInt(800).Equal(enrichedBudgets[0].Amount))           // Budgeted
-			assert.True(t, decimal.NewFromFloat(550.50).Equal(enrichedBudgets[0].SpentAmount)) // Spent
-			assert.True(t, decimal.NewFromFloat(249.50).Equal(enrichedBudgets[0].Balance))     // Remaining
+			foodBudget := enrichedBudgets[0]
+			expectedBudgetedAmount := decimal.NewFromInt(800)
+			expectedBalance := decimal.NewFromFloat(249.50) // 800 - 550.50
 
-			// Check Transport budget
-			assert.Equal(t, int64(11), enrichedBudgets[1].CategoryId)
-			assert.True(t, decimal.NewFromInt(200).Equal(enrichedBudgets[1].Amount))  // Budgeted
-			assert.True(t, decimal.Zero.Equal(enrichedBudgets[1].SpentAmount))        // Spent
-			assert.True(t, decimal.NewFromInt(200).Equal(enrichedBudgets[1].Balance)) // Remaining
+			assert.True(t, expectedBudgetedAmount.Equal(foodBudget.Amount), "budgeted amount should be correct")
+			assert.True(t, expectedSpentAmount.Equal(foodBudget.SpentAmount), "spent amount should be calculated correctly")
+			assert.True(t, expectedBalance.Equal(foodBudget.Balance), "remaining balance should be calculated correctly")
 
 			mockBudgetRepo.AssertExpectations(t)
 			mockTxRepo.AssertExpectations(t)

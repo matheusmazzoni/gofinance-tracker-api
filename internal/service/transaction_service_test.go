@@ -26,7 +26,7 @@ func (m *MockTransactionRepository) Create(ctx context.Context, tx model.Transac
 	return args.Get(0).(int64), args.Error(1)
 }
 
-// GetById simulates retrieving a single transaction by its ID and user ID.
+// GetById simulates retrieving a single transaction by its Id and user Id.
 func (m *MockTransactionRepository) GetById(ctx context.Context, id, userId int64) (*model.Transaction, error) {
 	args := m.Called(ctx, id, userId)
 	if args.Get(0) == nil {
@@ -50,7 +50,7 @@ func (m *MockTransactionRepository) Update(ctx context.Context, tx model.Transac
 	return args.Error(0)
 }
 
-// Delete simulates deleting a transaction by its ID and user ID.
+// Delete simulates deleting a transaction by its Id and user Id.
 func (m *MockTransactionRepository) Delete(ctx context.Context, id, userId int64) error {
 	// Note: Fixed a bug here. Original was m.Called(ctx, userId, userId).
 	args := m.Called(ctx, id, userId)
@@ -63,9 +63,15 @@ func (m *MockTransactionRepository) DeleteByAccountId(ctx context.Context, userI
 	return args.Error(0)
 }
 
-func (m *MockTransactionRepository) SumExpensesByCategoryAndPeriod(ctx context.Context, userID, categoryID int64, startDate, endDate time.Time) (decimal.Decimal, error) {
-	args := m.Called(ctx, userID, categoryID, startDate, endDate)
-	return args.Get(0).(decimal.Decimal), args.Error(0)
+func (m *MockTransactionRepository) SumExpensesByCategoryAndPeriod(ctx context.Context, userId, categoryId int64, startDate, endDate time.Time) (decimal.Decimal, error) {
+	args := m.Called(ctx, userId, categoryId, startDate, endDate)
+	// Get the first return argument and assert it's a decimal.Decimal
+	data := args.Get(0)
+	if data == nil {
+		return decimal.Zero, args.Error(1)
+	}
+	return data.(decimal.Decimal), args.Error(1)
+
 }
 
 // TestTransactionService contains all tests for transaction service business logic .
