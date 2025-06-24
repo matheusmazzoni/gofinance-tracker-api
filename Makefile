@@ -61,9 +61,8 @@ lint:
 
 start: 
 	@echo "Starting environment..."
+	@docker compose build
 	@docker compose up -d
-	@sleep 3
-	@make run
 
 swag-docs:
 	@echo "Generating Swagger documentation..."
