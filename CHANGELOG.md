@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/matheusmazzoni/gofinance-tracker-api/compare/v1.1.0...v1.1.1) (2025-06-24)
+
+
+### Bug Fixes
+
+* change the release message on releaserc ([af5e18d](https://github.com/matheusmazzoni/gofinance-tracker-api/commit/af5e18d13849126329cb599dc418caaecf1b3b60))
+
 # [1.1.0](https://github.com/matheusmazzoni/gofinance-tracker-api/compare/v1.0.0...v1.1.0) (2025-06-24)
 
 
