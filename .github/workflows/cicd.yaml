@@ -3,7 +3,7 @@ name: CI/CD Pipeline
 on:
   workflow_dispatch:
   push:
-    tags: [ '*' ]
+    branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
 
@@ -71,68 +71,87 @@ jobs:
           name: coverage-report
           path: coverage.out
 
-  build-and-push:
+  build-push-release:
     needs: test
     name: Build and Push Docker Image
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
       security-events: write
+    outputs:
+      new_release_published: ${{ steps.semantic.outputs.new_release_published }}
+      new_release_version: ${{ steps.semantic.outputs.new_release_version }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Semantic Release
+        uses: cycjimmy/semantic-release-action@v4
+        id: semantic
+        with:
+          extra_plugins: |
+            @semantic-release/changelog
+            @semantic-release/git
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up QEMU
+        if: steps.semantic.outputs.new_release_published == 'true'
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
+        if: steps.semantic.outputs.new_release_published == 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to the Container registry
+        if: steps.semantic.outputs.new_release_published == 'true'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
-          password: ${{ secrets.GH_TOKEN }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract metadata (tags, labels) for Docker
+        if: steps.semantic.outputs.new_release_published == 'true'
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha
+            type=raw,value=latest,enable=true
+            type=semver,pattern={{version}},value=${{ steps.semantic.outputs.new_release_version }}
 
       - name: Build Docker image
+        if: steps.semantic.outputs.new_release_published == 'true'
         uses: docker/build-push-action@v5
         with:
           context: .
           load: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:scanner
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: Run Trivy vulnerability scanner
+        if: steps.semantic.outputs.new_release_published == 'true'
         uses: aquasecurity/trivy-action@master
         with:
-          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          image: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:scanner'
           format: 'sarif'
           output: 'trivy-results.sarif'
           severity: 'CRITICAL,HIGH'
 
       - name: Upload Trivy scan results to GitHub Security tab
+        if: steps.semantic.outputs.new_release_published == 'true'
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
         with:
           sarif_file: 'trivy-results.sarif'
-
+          
       - name: Push Docker image
+        if: steps.semantic.outputs.new_release_published == 'true'
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -140,14 +159,14 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
   deploy:
     name: Deploy
-    needs: build-and-push
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: build-push-release
+    if: needs.build-push-release.outputs.new_release_published == 'true'
     runs-on: ubuntu-latest
     
     steps:
       - name: Deploy to production
         run: |
-          echo "Add your deployment steps here"
-          # Example: kubectl apply, terraform apply, etc. 
+          echo "🚀 Deploying version ${{ needs.build-push-release.outputs.new_release_version }} to production..."
