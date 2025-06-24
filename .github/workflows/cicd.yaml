@@ -139,7 +139,7 @@ jobs:
         if: steps.semantic.outputs.new_release_published == 'true'
         uses: aquasecurity/trivy-action@master
         with:
-          image: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:scanner'
+          image-ref: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:scanner'
           format: 'sarif'
           output: 'trivy-results.sarif'
           severity: 'CRITICAL,HIGH'
