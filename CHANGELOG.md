@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/matheusmazzoni/gofinance-tracker-api/compare/v1.0.0...v1.0.1) (2025-06-24)
+
+
+### Bug Fixes
+
+* unify the cicd pipeline ([2d654b8](https://github.com/matheusmazzoni/gofinance-tracker-api/commit/2d654b8b559f4123178fc99aebbddaa7f9d3f2a3))
+
 # 1.0.0 (2025-06-24)
 
 
