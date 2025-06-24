@@ -1,3 +1,10 @@
+## [1.0.2](https://github.com/matheusmazzoni/gofinance-tracker-api/compare/v1.0.1...v1.0.2) (2025-06-24)
+
+
+### Bug Fixes
+
+* update trivy check on cicd ([d7b6c8d](https://github.com/matheusmazzoni/gofinance-tracker-api/commit/d7b6c8dbf7c06947f370792c092f5f6b3b42258a))
+
 ## [1.0.1](https://github.com/matheusmazzoni/gofinance-tracker-api/compare/v1.0.0...v1.0.1) (2025-06-24)
 
 
