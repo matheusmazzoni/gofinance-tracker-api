@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/matheusmazzoni/gofinance-tracker-api/compare/v1.0.0...v1.1.0) (2025-06-24)
+
+
+### Features
+
+* add GH_TOKEN on ci/cd pipelines ([4cb276b](https://github.com/matheusmazzoni/gofinance-tracker-api/commit/4cb276bd0f23d384a1bef5e10e02f7deefb6b3b3))
+
 # 1.0.0 (2025-06-24)
 
 
