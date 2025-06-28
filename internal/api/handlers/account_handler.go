@@ -87,12 +87,14 @@ func (h *AccountHandler) ListAccounts(c *gin.Context) {
 	var responses []dto.AccountResponse
 	for _, acc := range accounts {
 		responses = append(responses, dto.AccountResponse{
-			Id:        acc.Id,
-			Name:      acc.Name,
-			Type:      acc.Type,
-			Balance:   acc.Balance,
-			CreatedAt: acc.CreatedAt,
-			UpdatedAt: acc.UpdatedAt,
+			Id:                  acc.Id,
+			Name:                acc.Name,
+			Type:                acc.Type,
+			Balance:             acc.Balance,
+			CreatedAt:           acc.CreatedAt,
+			UpdatedAt:           acc.UpdatedAt,
+			StatementClosingDay: acc.StatementClosingDay,
+			PaymentDueDay:       acc.PaymentDueDay,
 		})
 	}
 	dto.SendSuccessResponse(c, http.StatusOK, responses)
@@ -124,13 +126,15 @@ func (h *AccountHandler) GetAccount(c *gin.Context) {
 	}
 
 	dto.SendSuccessResponse(c, http.StatusOK, dto.AccountResponse{
-		Id:             account.Id,
-		Name:           account.Name,
-		Type:           account.Type,
-		InitialBalance: account.InitialBalance,
-		Balance:        account.Balance,
-		CreatedAt:      account.CreatedAt,
-		UpdatedAt:      account.UpdatedAt,
+		Id:                  account.Id,
+		Name:                account.Name,
+		Type:                account.Type,
+		InitialBalance:      account.InitialBalance,
+		Balance:             account.Balance,
+		CreatedAt:           account.CreatedAt,
+		UpdatedAt:           account.UpdatedAt,
+		StatementClosingDay: account.StatementClosingDay,
+		PaymentDueDay:       account.PaymentDueDay,
 	})
 }
 
@@ -171,13 +175,15 @@ func (h *AccountHandler) UpdateAccount(c *gin.Context) {
 	}
 
 	dto.SendSuccessResponse(c, http.StatusOK, dto.AccountResponse{
-		Id:             updatedAcc.Id,
-		Name:           updatedAcc.Name,
-		Type:           updatedAcc.Type,
-		InitialBalance: updatedAcc.InitialBalance,
-		Balance:        updatedAcc.Balance,
-		CreatedAt:      updatedAcc.CreatedAt,
-		UpdatedAt:      updatedAcc.UpdatedAt,
+		Id:                  updatedAcc.Id,
+		Name:                updatedAcc.Name,
+		Type:                updatedAcc.Type,
+		InitialBalance:      updatedAcc.InitialBalance,
+		Balance:             updatedAcc.Balance,
+		CreatedAt:           updatedAcc.CreatedAt,
+		UpdatedAt:           updatedAcc.UpdatedAt,
+		StatementClosingDay: updatedAcc.StatementClosingDay,
+		PaymentDueDay:       updatedAcc.PaymentDueDay,
 	})
 }
 
