@@ -43,6 +43,13 @@ func (m *MockTransactionRepository) List(ctx context.Context, userId int64, filt
 	}
 	return args.Get(0).([]model.Transaction), args.Error(1)
 }
+func (m *MockTransactionRepository) ListByAccountAndDateRange(ctx context.Context, userId, accountId int64, startDate, endDate time.Time) ([]model.Transaction, error) {
+	args := m.Called(ctx, userId, accountId, startDate, endDate)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]model.Transaction), args.Error(1)
+}
 
 // Update simulates updating a transaction in the database.
 func (m *MockTransactionRepository) Update(ctx context.Context, tx model.Transaction) error {
