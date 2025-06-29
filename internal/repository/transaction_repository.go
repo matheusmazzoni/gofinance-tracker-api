@@ -10,8 +10,8 @@ import (
 	"github.com/Masterminds/squirrel"
 	"github.com/jmoiron/sqlx"
 	"github.com/matheusmazzoni/gofinance-tracker-api/internal/model"
-	"github.com/shopspring/decimal"
 	"github.com/rs/zerolog"
+	"github.com/shopspring/decimal"
 )
 
 // TransactionRepository define a interface para o acesso de dados de transações.
@@ -22,6 +22,7 @@ type TransactionRepository interface {
 	Update(ctx context.Context, tx model.Transaction) error
 	Delete(ctx context.Context, id int64, userId int64) error
 	List(ctx context.Context, userId int64, filters ListTransactionFilters) ([]model.Transaction, error)
+	ListByAccountAndDateRange(ctx context.Context, userID, accountID int64, startDate, endDate time.Time) ([]model.Transaction, error)
 	DeleteByAccountId(ctx context.Context, userId, accountId int64) error
 	SumExpensesByCategoryAndPeriod(ctx context.Context, userID, categoryID int64, startDate, endDate time.Time) (decimal.Decimal, error)
 }
@@ -185,6 +186,22 @@ func (r *pqTransactionRepository) List(ctx context.Context, userId int64, filter
 
 	var transactions []model.Transaction
 	err = r.db.SelectContext(ctx, &transactions, sql, args...)
+	return transactions, err
+}
+
+// ListByAccountAndDateRange retrieves all transactions for a specific account within a date range.
+func (r *pqTransactionRepository) ListByAccountAndDateRange(ctx context.Context, userID, accountID int64, startDate, endDate time.Time) ([]model.Transaction, error) {
+	var transactions []model.Transaction
+	// This query is straightforward as the complex date calculation is done in the service.
+	query := `
+        SELECT * FROM transactions
+        WHERE user_id = $1
+          AND account_id = $2
+          AND date >= $3
+          AND date <= $4
+        ORDER BY date DESC
+    `
+	err := r.db.SelectContext(ctx, &transactions, query, userID, accountID, startDate, endDate)
 	return transactions, err
 }
 

@@ -302,6 +302,7 @@ func TestUserRoutes(t *testing.T) {
 		}, 2*time.Second, 100*time.Millisecond, "it should create the default categories within the time limit")
 	})
 }
+
 func TestLoginRoutes(t *testing.T) {
 	require := require.New(t)
 	gin.SetMode(gin.TestMode)
@@ -375,6 +376,7 @@ func TestLoginRoutes(t *testing.T) {
 		require.Equal(errorResponse.Error, "invalid credentials")
 	})
 }
+
 func TestAccountRoutes(t *testing.T) {
 	require := require.New(t)
 	gin.SetMode(gin.TestMode)
@@ -684,6 +686,74 @@ func TestAccountRoutes(t *testing.T) {
 
 		require.Contains(errorResponse.Error, "an account with this name already exists")
 	})
+}
+
+func TestCreditCardStatementAPI(t *testing.T) {
+	// --- ARRANGE ---
+	require := require.New(t)
+	gin.SetMode(gin.TestMode)
+
+	testhelper.TruncateTables(t, testServer.db)
+
+	ctx := context.Background()
+	userRepo := repository.NewUserRepository(testServer.db)
+	userId, _ := userRepo.Create(ctx, model.User{Name: "CC API User", Email: "cc-api@test.com", PasswordHash: "hash"})
+	token := testhelper.GenerateTestToken(t, userId, testServer.config.JWTSecretKey)
+
+	// Create a credit card account with a closing day of the 20th
+	accountRepo := repository.NewAccountRepository(testServer.db)
+	closingDay, dueDate := 20, 10
+	creditCardId, _ := accountRepo.Create(ctx, model.Account{
+		UserId:              userId,
+		Name:                "My Test Credit Card",
+		Type:                model.CreditCard,
+		StatementClosingDay: &closingDay,
+		PaymentDueDay:       &dueDate,
+	})
+
+	// Create transactions in different billing cycles
+	txRepo := repository.NewTransactionRepository(testServer.db)
+	// This transaction belongs to the PREVIOUS statement (due in May)
+	_, _ = txRepo.Create(ctx, model.Transaction{UserId: userId, AccountId: creditCardId, Description: "Old Purchase", Amount: decimal.NewFromInt(1000), Type: "expense", Date: time.Date(2025, 5, 15, 12, 0, 0, 0, time.UTC)})
+	// These two transactions belong to the CURRENT statement (due in June)
+	_, _ = txRepo.Create(ctx, model.Transaction{UserId: userId, AccountId: creditCardId, Description: "Grocery Shopping", Amount: decimal.NewFromFloat(250.50), Type: "expense", Date: time.Date(2025, 5, 25, 12, 0, 0, 0, time.UTC)})
+	_, _ = txRepo.Create(ctx, model.Transaction{UserId: userId, AccountId: creditCardId, Description: "Dinner Out", Amount: decimal.NewFromFloat(150.00), Type: "expense", Date: time.Date(2025, 6, 10, 12, 0, 0, 0, time.UTC)})
+	// This transaction belongs to the NEXT statement (due in July)
+	_, _ = txRepo.Create(ctx, model.Transaction{UserId: userId, AccountId: creditCardId, Description: "Future Purchase", Amount: decimal.NewFromInt(50), Type: "expense", Date: time.Date(2025, 6, 25, 12, 0, 0, 0, time.UTC)})
+
+	// --- ACT ---
+	// We ask for the statement for June (month 6) 2025.
+	// The backend should calculate the period from May 20st to June 20th.
+	url := fmt.Sprintf("/v1/accounts/%d/statement?month=6&year=2025", creditCardId)
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	recorder := httptest.NewRecorder()
+
+	testServer.router.ServeHTTP(recorder, req)
+
+	// --- ASSERT ---
+	require.Equal(http.StatusOK, recorder.Code)
+
+	var resp dto.StatementResponse
+	err := json.Unmarshal(recorder.Body.Bytes(), &resp)
+	require.NoError(err)
+
+	// Check the calculated total
+	expectedTotal := decimal.NewFromFloat(400.50) // 250.50 + 150.00
+	assert.True(t, expectedTotal.Equal(resp.StatementTotal), "statement total should be calculated correctly")
+
+	// Check that only the correct transactions were included
+	assert.Len(t, resp.Transactions, 2, "should only be two transactions in this statement")
+
+	// Check the details of the included transactions
+	var descriptions []string
+	for _, tx := range resp.Transactions {
+		descriptions = append(descriptions, tx.Description)
+	}
+	assert.Contains(t, descriptions, "Grocery Shopping")
+	assert.Contains(t, descriptions, "Dinner Out")
+	assert.NotContains(t, descriptions, "Old Purchase")
+	assert.NotContains(t, descriptions, "Future Purchase")
 }
 func TestTransactionRoutes(t *testing.T) {
 	require := require.New(t)

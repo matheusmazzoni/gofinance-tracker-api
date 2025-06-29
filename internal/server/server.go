@@ -124,6 +124,7 @@ func (s *Server) setupRouter(logger *zerolog.Logger) {
 				accounts.POST("", accountHandler.CreateAccount)
 				accounts.GET("", accountHandler.ListAccounts)
 				accounts.GET("/:id", accountHandler.GetAccount)
+				accounts.GET("/:id/statement", accountHandler.GetAccountStatement)
 				accounts.PUT("/:id", accountHandler.UpdateAccount)
 				accounts.DELETE("/:id", accountHandler.DeleteAccount)
 			}

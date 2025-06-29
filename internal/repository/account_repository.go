@@ -6,8 +6,8 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/matheusmazzoni/gofinance-tracker-api/internal/model"
-	"github.com/shopspring/decimal"
 	"github.com/rs/zerolog"
+	"github.com/shopspring/decimal"
 )
 
 type AccountRepository interface {
@@ -30,8 +30,8 @@ func NewAccountRepository(db *sqlx.DB) AccountRepository {
 
 func (r *pqAccountRepository) Create(ctx context.Context, acc model.Account) (int64, error) {
 	query := `
-		INSERT INTO accounts (user_id, name, type, initial_balance) 
-		VALUES (:user_id, :name, :type, :initial_balance) 
+		INSERT INTO accounts (user_id, name, type, initial_balance, statement_closing_day, payment_due_day) 
+		VALUES (:user_id, :name, :type, :initial_balance, :statement_closing_day, :payment_due_day) 
 		RETURNING id
 	`
 
@@ -87,6 +87,8 @@ func (r *pqAccountRepository) Update(ctx context.Context, acc model.Account) err
 			name = :name, 
 			type = :type, 
 			initial_balance = :initial_balance,
+			statement_closing_day = :statement_closing_day,
+			payment_due_day = :payment_due_day,
 			updated_at = NOW() 
 		WHERE 
 			id = :id AND user_id = :user_id
