@@ -22,14 +22,14 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retorna um array com todas as contas do usuário logado",
+                "description": "Returns an array with all of the logged-in user's accounts",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "accounts"
                 ],
-                "summary": "Lista todas as contas do usuário",
+                "summary": "List all user accounts",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -60,7 +60,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Adiciona uma nova conta financeira ao sistema do usuário logado",
+                "description": "Adds a new financial account to the logged-in user's system",
                 "consumes": [
                     "application/json"
                 ],
@@ -70,15 +70,15 @@ const docTemplate = `{
                 "tags": [
                     "accounts"
                 ],
-                "summary": "Cria uma nova conta",
+                "summary": "Create a new account",
                 "parameters": [
                     {
-                        "description": "Dados da Conta para Criação",
+                        "description": "Account Data for Creation",
                         "name": "account",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/dto.CreateAccountRequest"
+                            "$ref": "#/definitions/dto.AccountRequest"
                         }
                     }
                 ],
@@ -86,7 +86,7 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/dto.CreateAccountResponse"
+                            "$ref": "#/definitions/dto.AccountResponse"
                         }
                     },
                     "400": {
@@ -117,18 +117,18 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retorna os detalhes de uma única conta que pertença ao usuário logado",
+                "description": "Returns the details of a single account belonging to the logged-in user",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "accounts"
                 ],
-                "summary": "Busca uma conta pelo ID",
+                "summary": "Get an account by ID",
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "Id da Conta",
+                        "description": "Account Id",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -161,7 +161,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Atualiza os detalhes de uma conta existente",
+                "description": "Updates the details of an existing account",
                 "consumes": [
                     "application/json"
                 ],
@@ -171,22 +171,22 @@ const docTemplate = `{
                 "tags": [
                     "accounts"
                 ],
-                "summary": "Atualiza uma conta",
+                "summary": "Update an account",
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "Id da Conta",
+                        "description": "Account ID",
                         "name": "id",
                         "in": "path",
                         "required": true
                     },
                     {
-                        "description": "Dados para Atualizar",
+                        "description": "Data for Update",
                         "name": "account",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/dto.UpdateAccountRequest"
+                            "$ref": "#/definitions/dto.AccountRequest"
                         }
                     }
                 ],
@@ -223,15 +223,15 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Remove uma conta do sistema. Falhará se a conta tiver transações associadas.",
+                "description": "Removes an account from the system. It will fail if the account has associated transactions.",
                 "tags": [
                     "accounts"
                 ],
-                "summary": "Deleta uma conta",
+                "summary": "Delete an account",
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "Id da Conta",
+                        "description": "Account ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -255,6 +255,64 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/accounts/{id}/statement": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves all transactions and balance details for a specific credit card billing cycle. Defaults to the current statement if month/year are not provided.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "accounts"
+                ],
+                "summary": "Get a credit card statement",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Account Id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "The month of the statement's due date (1-12)",
+                        "name": "month",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "The year of the statement's due date (e.g., 2025)",
+                        "name": "year",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.StatementResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -301,6 +359,199 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/budgets": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves all budgets for the user for a specific month and year. Defaults to the current month/year.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "budgets"
+                ],
+                "summary": "Lists budgets for a given period",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Month to filter (1-12)",
+                        "name": "month",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Year to filter (e.g., 2025)",
+                        "name": "year",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/dto.BudgetResponse"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Adds a new monthly budget for a specific category.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "budgets"
+                ],
+                "summary": "Creates a new budget",
+                "parameters": [
+                    {
+                        "description": "Budget Creation Data",
+                        "name": "budget",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateBudgetRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.BudgetResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/budgets/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Changes the amount for an existing budget.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "budgets"
+                ],
+                "summary": "Updates a budget's amount",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Budget Id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New Budget Amount",
+                        "name": "budget",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateBudgetRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.BudgetResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Removes a budget for a specific category and period.",
+                "tags": [
+                    "budgets"
+                ],
+                "summary": "Deletes a budget",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Budget Id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -866,14 +1117,66 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "dto.AccountRequest": {
+            "type": "object",
+            "required": [
+                "initial_balance",
+                "name",
+                "type"
+            ],
+            "properties": {
+                "credit_limit": {
+                    "type": "number",
+                    "example": 5000
+                },
+                "initial_balance": {
+                    "type": "number",
+                    "example": 1000.5
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 2,
+                    "example": "Nubank Account"
+                },
+                "payment_due_day": {
+                    "type": "integer",
+                    "example": 5
+                },
+                "statement_closing_day": {
+                    "type": "integer",
+                    "example": 28
+                },
+                "type": {
+                    "enum": [
+                        "checking",
+                        "savings",
+                        "credit_card",
+                        "other"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/model.AccountType"
+                        }
+                    ],
+                    "example": "checking"
+                }
+            }
+        },
         "dto.AccountResponse": {
             "type": "object",
             "properties": {
                 "balance": {
                     "type": "number"
                 },
-                "created_at": {
-                    "type": "string"
+                "closing_day": {
+                    "type": "integer"
+                },
+                "credit_limit": {
+                    "type": "number"
+                },
+                "due_day": {
+                    "type": "integer"
                 },
                 "id": {
                     "type": "integer"
@@ -887,8 +1190,43 @@ const docTemplate = `{
                 "type": {
                     "$ref": "#/definitions/model.AccountType"
                 },
-                "updated_at": {
+                "user_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.BudgetResponse": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "description": "The planned budget amount",
+                    "type": "number"
+                },
+                "balance": {
+                    "description": "The remaining balance (Amount - Spent)",
+                    "type": "number"
+                },
+                "category_id": {
+                    "type": "integer"
+                },
+                "category_name": {
                     "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "month": {
+                    "type": "integer"
+                },
+                "spent_amount": {
+                    "description": "The calculated amount spent so far",
+                    "type": "number"
+                },
+                "year": {
+                    "type": "integer"
                 }
             }
         },
@@ -915,30 +1253,27 @@ const docTemplate = `{
                 }
             }
         },
-        "dto.CreateAccountRequest": {
+        "dto.CreateBudgetRequest": {
             "type": "object",
             "required": [
-                "initial_balance",
-                "name",
-                "type"
+                "amount",
+                "category_id",
+                "month",
+                "year"
             ],
             "properties": {
-                "initial_balance": {
+                "amount": {
                     "type": "number"
                 },
-                "name": {
-                    "type": "string",
-                    "minLength": 2
+                "category_id": {
+                    "type": "integer"
                 },
-                "type": {
-                    "$ref": "#/definitions/model.AccountType"
-                }
-            }
-        },
-        "dto.CreateAccountResponse": {
-            "type": "object",
-            "properties": {
-                "id": {
+                "month": {
+                    "type": "integer",
+                    "maximum": 12,
+                    "minimum": 1
+                },
+                "year": {
                     "type": "integer"
                 }
             }
@@ -995,10 +1330,14 @@ const docTemplate = `{
         "dto.ErrorResponse": {
             "type": "object",
             "properties": {
+                "details": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
                 "error": {
-                    "description": "A mensagem de erro descritiva.",
-                    "type": "string",
-                    "example": "a descrição do erro aparece aqui"
+                    "type": "string"
                 }
             }
         },
@@ -1048,6 +1387,41 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.StatementPeriod": {
+            "type": "object",
+            "properties": {
+                "end": {
+                    "type": "string"
+                },
+                "start": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.StatementResponse": {
+            "type": "object",
+            "properties": {
+                "account_name": {
+                    "type": "string"
+                },
+                "payment_due_date": {
+                    "type": "string"
+                },
+                "period": {
+                    "$ref": "#/definitions/dto.StatementPeriod"
+                },
+                "statement_total": {
+                    "type": "number"
+                },
+                "transactions": {
+                    "description": "We reuse the existing TransactionResponse DTO",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.TransactionResponse"
+                    }
+                }
+            }
+        },
         "dto.TransactionResponse": {
             "type": "object",
             "properties": {
@@ -1086,23 +1460,14 @@ const docTemplate = `{
                 }
             }
         },
-        "dto.UpdateAccountRequest": {
+        "dto.UpdateBudgetRequest": {
             "type": "object",
             "required": [
-                "initial_balance",
-                "name",
-                "type"
+                "amount"
             ],
             "properties": {
-                "initial_balance": {
+                "amount": {
                     "type": "number"
-                },
-                "name": {
-                    "type": "string",
-                    "minLength": 2
-                },
-                "type": {
-                    "$ref": "#/definitions/model.AccountType"
                 }
             }
         },
@@ -1162,24 +1527,12 @@ const docTemplate = `{
                 "checking",
                 "savings",
                 "credit_card",
-                "investment",
-                "cash",
                 "other"
             ],
-            "x-enum-comments": {
-                "Cash": "Dinheiro Físico",
-                "Checking": "Conta Corrente",
-                "CreditCard": "Cartão de Crédito",
-                "Investment": "Investimento",
-                "Other": "Outros",
-                "Savings": "Poupança"
-            },
             "x-enum-varnames": [
                 "Checking",
                 "Savings",
                 "CreditCard",
-                "Investment",
-                "Cash",
                 "Other"
             ]
         },

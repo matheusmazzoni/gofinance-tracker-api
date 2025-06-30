@@ -1,11 +1,48 @@
 basePath: /v1
 definitions:
+  dto.AccountRequest:
+    properties:
+      credit_limit:
+        example: 5000
+        type: number
+      initial_balance:
+        example: 1000.5
+        type: number
+      name:
+        example: Nubank Account
+        maxLength: 100
+        minLength: 2
+        type: string
+      payment_due_day:
+        example: 5
+        type: integer
+      statement_closing_day:
+        example: 28
+        type: integer
+      type:
+        allOf:
+        - $ref: '#/definitions/model.AccountType'
+        enum:
+        - checking
+        - savings
+        - credit_card
+        - other
+        example: checking
+    required:
+    - initial_balance
+    - name
+    - type
+    type: object
   dto.AccountResponse:
     properties:
       balance:
         type: number
-      created_at:
-        type: string
+      closing_day:
+        type: integer
+      credit_limit:
+        type: number
+      due_day:
+        type: integer
       id:
         type: integer
       initial_balance:
@@ -14,8 +51,32 @@ definitions:
         type: string
       type:
         $ref: '#/definitions/model.AccountType'
-      updated_at:
+      user_id:
+        type: integer
+    type: object
+  dto.BudgetResponse:
+    properties:
+      amount:
+        description: The planned budget amount
+        type: number
+      balance:
+        description: The remaining balance (Amount - Spent)
+        type: number
+      category_id:
+        type: integer
+      category_name:
         type: string
+      created_at:
+        type: string
+      id:
+        type: integer
+      month:
+        type: integer
+      spent_amount:
+        description: The calculated amount spent so far
+        type: number
+      year:
+        type: integer
     type: object
   dto.CategoryRequest:
     properties:
@@ -32,24 +93,23 @@ definitions:
       name:
         type: string
     type: object
-  dto.CreateAccountRequest:
+  dto.CreateBudgetRequest:
     properties:
-      initial_balance:
+      amount:
         type: number
-      name:
-        minLength: 2
-        type: string
-      type:
-        $ref: '#/definitions/model.AccountType'
-    required:
-    - initial_balance
-    - name
-    - type
-    type: object
-  dto.CreateAccountResponse:
-    properties:
-      id:
+      category_id:
         type: integer
+      month:
+        maximum: 12
+        minimum: 1
+        type: integer
+      year:
+        type: integer
+    required:
+    - amount
+    - category_id
+    - month
+    - year
     type: object
   dto.CreateTransactionRequest:
     properties:
@@ -87,9 +147,11 @@ definitions:
     type: object
   dto.ErrorResponse:
     properties:
+      details:
+        additionalProperties:
+          type: string
+        type: object
       error:
-        description: A mensagem de erro descritiva.
-        example: a descrição do erro aparece aqui
         type: string
     type: object
   dto.LoginRequest:
@@ -122,6 +184,29 @@ definitions:
       type:
         $ref: '#/definitions/model.TransactionType'
     type: object
+  dto.StatementPeriod:
+    properties:
+      end:
+        type: string
+      start:
+        type: string
+    type: object
+  dto.StatementResponse:
+    properties:
+      account_name:
+        type: string
+      payment_due_date:
+        type: string
+      period:
+        $ref: '#/definitions/dto.StatementPeriod'
+      statement_total:
+        type: number
+      transactions:
+        description: We reuse the existing TransactionResponse DTO
+        items:
+          $ref: '#/definitions/dto.TransactionResponse'
+        type: array
+    type: object
   dto.TransactionResponse:
     properties:
       account_id:
@@ -147,19 +232,12 @@ definitions:
       type:
         $ref: '#/definitions/model.TransactionType'
     type: object
-  dto.UpdateAccountRequest:
+  dto.UpdateBudgetRequest:
     properties:
-      initial_balance:
+      amount:
         type: number
-      name:
-        minLength: 2
-        type: string
-      type:
-        $ref: '#/definitions/model.AccountType'
     required:
-    - initial_balance
-    - name
-    - type
+    - amount
     type: object
   dto.UpdateTransactionRequest:
     properties:
@@ -200,23 +278,12 @@ definitions:
     - checking
     - savings
     - credit_card
-    - investment
-    - cash
     - other
     type: string
-    x-enum-comments:
-      Cash: Dinheiro Físico
-      Checking: Conta Corrente
-      CreditCard: Cartão de Crédito
-      Investment: Investimento
-      Other: Outros
-      Savings: Poupança
     x-enum-varnames:
     - Checking
     - Savings
     - CreditCard
-    - Investment
-    - Cash
     - Other
   model.TransactionType:
     enum:
@@ -237,7 +304,7 @@ info:
 paths:
   /accounts:
     get:
-      description: Retorna um array com todas as contas do usuário logado
+      description: Returns an array with all of the logged-in user's accounts
       produces:
       - application/json
       responses:
@@ -257,27 +324,27 @@ paths:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Lista todas as contas do usuário
+      summary: List all user accounts
       tags:
       - accounts
     post:
       consumes:
       - application/json
-      description: Adiciona uma nova conta financeira ao sistema do usuário logado
+      description: Adds a new financial account to the logged-in user's system
       parameters:
-      - description: Dados da Conta para Criação
+      - description: Account Data for Creation
         in: body
         name: account
         required: true
         schema:
-          $ref: '#/definitions/dto.CreateAccountRequest'
+          $ref: '#/definitions/dto.AccountRequest'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/dto.CreateAccountResponse'
+            $ref: '#/definitions/dto.AccountResponse'
         "400":
           description: Bad Request
           schema:
@@ -292,15 +359,15 @@ paths:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Cria uma nova conta
+      summary: Create a new account
       tags:
       - accounts
   /accounts/{id}:
     delete:
-      description: Remove uma conta do sistema. Falhará se a conta tiver transações
-        associadas.
+      description: Removes an account from the system. It will fail if the account
+        has associated transactions.
       parameters:
-      - description: Id da Conta
+      - description: Account ID
         in: path
         name: id
         required: true
@@ -322,14 +389,14 @@ paths:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Deleta uma conta
+      summary: Delete an account
       tags:
       - accounts
     get:
-      description: Retorna os detalhes de uma única conta que pertença ao usuário
-        logado
+      description: Returns the details of a single account belonging to the logged-in
+        user
       parameters:
-      - description: Id da Conta
+      - description: Account Id
         in: path
         name: id
         required: true
@@ -351,25 +418,25 @@ paths:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Busca uma conta pelo ID
+      summary: Get an account by ID
       tags:
       - accounts
     put:
       consumes:
       - application/json
-      description: Atualiza os detalhes de uma conta existente
+      description: Updates the details of an existing account
       parameters:
-      - description: Id da Conta
+      - description: Account ID
         in: path
         name: id
         required: true
         type: integer
-      - description: Dados para Atualizar
+      - description: Data for Update
         in: body
         name: account
         required: true
         schema:
-          $ref: '#/definitions/dto.UpdateAccountRequest'
+          $ref: '#/definitions/dto.AccountRequest'
       produces:
       - application/json
       responses:
@@ -391,7 +458,46 @@ paths:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Atualiza uma conta
+      summary: Update an account
+      tags:
+      - accounts
+  /accounts/{id}/statement:
+    get:
+      description: Retrieves all transactions and balance details for a specific credit
+        card billing cycle. Defaults to the current statement if month/year are not
+        provided.
+      parameters:
+      - description: Account Id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: The month of the statement's due date (1-12)
+        in: query
+        name: month
+        type: integer
+      - description: The year of the statement's due date (e.g., 2025)
+        in: query
+        name: year
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.StatementResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get a credit card statement
       tags:
       - accounts
   /auth/login:
@@ -424,6 +530,129 @@ paths:
       summary: Realiza o login do usuário
       tags:
       - auth
+  /budgets:
+    get:
+      description: Retrieves all budgets for the user for a specific month and year.
+        Defaults to the current month/year.
+      parameters:
+      - description: Month to filter (1-12)
+        in: query
+        name: month
+        type: integer
+      - description: Year to filter (e.g., 2025)
+        in: query
+        name: year
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.BudgetResponse'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Lists budgets for a given period
+      tags:
+      - budgets
+    post:
+      consumes:
+      - application/json
+      description: Adds a new monthly budget for a specific category.
+      parameters:
+      - description: Budget Creation Data
+        in: body
+        name: budget
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateBudgetRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.BudgetResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Creates a new budget
+      tags:
+      - budgets
+  /budgets/{id}:
+    delete:
+      description: Removes a budget for a specific category and period.
+      parameters:
+      - description: Budget Id
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Deletes a budget
+      tags:
+      - budgets
+    put:
+      consumes:
+      - application/json
+      description: Changes the amount for an existing budget.
+      parameters:
+      - description: Budget Id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: New Budget Amount
+        in: body
+        name: budget
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateBudgetRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.BudgetResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Updates a budget's amount
+      tags:
+      - budgets
   /categories:
     get:
       description: Retorna um array com todas as categorias do usuário logado
