@@ -59,15 +59,15 @@ lint:
 	@echo "Running linters..."
 	@golangci-lint run ./...
 
-start: 
-	@echo "Starting environment..."
-	@docker compose build
-	@docker compose up -d
-
 swag-docs:
 	@echo "Generating Swagger documentation..."
 	@$(GOSWAG) fmt
 	@$(GOSWAG) init -g $(CMD_PATH)/main.go -o ./api
+
+start: swag-docs
+	@echo "Starting environment..."
+	@docker compose build
+	@docker compose up -d
 
 # Docker targets
 docker-build:
