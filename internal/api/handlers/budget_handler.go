@@ -23,17 +23,18 @@ func NewBudgetHandler(s *service.BudgetService) *BudgetHandler {
 }
 
 // CreateBudget godoc
-// @Summary      Creates a new budget
-// @Description  Adds a new monthly budget for a specific category.
-// @Tags         budgets
-// @Accept       json
-// @Produce      json
-// @Param        budget body dto.CreateBudgetRequest true "Budget Creation Data"
-// @Success      201 {object} dto.BudgetResponse
-// @Failure      400 {object} dto.ErrorResponse
-// @Failure      409 {object} dto.ErrorResponse
-// @Security     BearerAuth
-// @Router       /budgets [post]
+//
+//	@Summary		Creates a new budget
+//	@Description	Adds a new monthly budget for a specific category.
+//	@Tags			budgets
+//	@Accept			json
+//	@Produce		json
+//	@Param			budget	body		dto.CreateBudgetRequest	true	"Budget Creation Data"
+//	@Success		201		{object}	dto.BudgetResponse
+//	@Failure		400		{object}	dto.ErrorResponse
+//	@Failure		409		{object}	dto.ErrorResponse
+//	@Security		BearerAuth
+//	@Router			/budgets [post]
 func (h *BudgetHandler) CreateBudget(c *gin.Context) {
 	var req dto.CreateBudgetRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -71,21 +72,22 @@ func (h *BudgetHandler) CreateBudget(c *gin.Context) {
 }
 
 // ListBudgets godoc
-// @Summary      Lists budgets for a given period
-// @Description  Retrieves all budgets for the user for a specific month and year. Defaults to the current month/year.
-// @Tags         budgets
-// @Produce      json
-// @Param        month query int false "Month to filter (1-12)"
-// @Param        year  query int false "Year to filter (e.g., 2025)"
-// @Success      200 {array} dto.BudgetResponse
-// @Failure      401 {object} dto.ErrorResponse
-// @Failure      500 {object} dto.ErrorResponse
-// @Security     BearerAuth
-// @Router       /budgets [get]
+//
+//	@Summary		Lists budgets for a given period
+//	@Description	Retrieves all budgets for the user for a specific month and year. Defaults to the current month/year.
+//	@Tags			budgets
+//	@Produce		json
+//	@Param			month	query		int	false	"Month to filter (1-12)"
+//	@Param			year	query		int	false	"Year to filter (e.g., 2025)"
+//	@Success		200		{array}		dto.BudgetResponse
+//	@Failure		401		{object}	dto.ErrorResponse
+//	@Failure		500		{object}	dto.ErrorResponse
+//	@Security		BearerAuth
+//	@Router			/budgets [get]
 func (h *BudgetHandler) ListBudgets(c *gin.Context) {
 	userId := c.MustGet("userId").(int64)
 
-	now := time.Now()
+	now := time.Now().UTC()
 	month, errMonth := strconv.Atoi(c.DefaultQuery("month", strconv.Itoa(int(now.Month()))))
 	year, errYear := strconv.Atoi(c.DefaultQuery("year", strconv.Itoa(now.Year())))
 
@@ -108,18 +110,19 @@ func (h *BudgetHandler) ListBudgets(c *gin.Context) {
 }
 
 // UpdateBudget godoc
-// @Summary      Updates a budget's amount
-// @Description  Changes the amount for an existing budget.
-// @Tags         budgets
-// @Accept       json
-// @Produce      json
-// @Param        id     path int true "Budget Id"
-// @Param        budget body dto.UpdateBudgetRequest true "New Budget Amount"
-// @Success      200 {object} dto.BudgetResponse
-// @Failure      400 {object} dto.ErrorResponse
-// @Failure      404 {object} dto.ErrorResponse
-// @Security     BearerAuth
-// @Router       /budgets/{id} [put]
+//
+//	@Summary		Updates a budget's amount
+//	@Description	Changes the amount for an existing budget.
+//	@Tags			budgets
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		int						true	"Budget Id"
+//	@Param			budget	body		dto.UpdateBudgetRequest	true	"New Budget Amount"
+//	@Success		200		{object}	dto.BudgetResponse
+//	@Failure		400		{object}	dto.ErrorResponse
+//	@Failure		404		{object}	dto.ErrorResponse
+//	@Security		BearerAuth
+//	@Router			/budgets/{id} [put]
 func (h *BudgetHandler) UpdateBudget(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -155,14 +158,15 @@ func (h *BudgetHandler) UpdateBudget(c *gin.Context) {
 }
 
 // DeleteBudget godoc
-// @Summary      Deletes a budget
-// @Description  Removes a budget for a specific category and period.
-// @Tags         budgets
-// @Param        id path int true "Budget Id"
-// @Success      204
-// @Failure      404 {object} dto.ErrorResponse
-// @Security     BearerAuth
-// @Router       /budgets/{id} [delete]
+//
+//	@Summary		Deletes a budget
+//	@Description	Removes a budget for a specific category and period.
+//	@Tags			budgets
+//	@Param			id	path	int	true	"Budget Id"
+//	@Success		204
+//	@Failure		404	{object}	dto.ErrorResponse
+//	@Security		BearerAuth
+//	@Router			/budgets/{id} [delete]
 func (h *BudgetHandler) DeleteBudget(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {

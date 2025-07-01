@@ -40,19 +40,15 @@ func MakeAPIRequest(t *testing.T, router *gin.Engine, method, url, token string,
 
 // CreateAccount is a test helper to create a new account via an API call.
 // It asserts for a successful creation and returns the new account's Id.
-func CreateAccount(t *testing.T, router *gin.Engine, token, name string, accType model.AccountType, initialBalance decimal.Decimal) int64 {
-	createAccountReq := dto.CreateAccountRequest{
-		Name:           name,
-		Type:           accType,
-		InitialBalance: initialBalance,
-	}
+func CreateAccount(t *testing.T, router *gin.Engine, token string, createAccountReq dto.AccountRequest) int64 {
+
 	body, err := json.Marshal(createAccountReq)
 	require.NoError(t, err)
 
 	recorder := MakeAPIRequest(t, router, http.MethodPost, "/v1/accounts", token, bytes.NewBuffer(body))
 	require.Equal(t, http.StatusCreated, recorder.Code)
 
-	var resp dto.CreateAccountResponse
+	var resp dto.AccountResponse
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
 	return resp.Id
 }
@@ -65,7 +61,7 @@ func GetAccountBalance(t *testing.T, router *gin.Engine, token string, accountId
 
 	var resp dto.AccountResponse
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
-	return resp.Balance
+	return *resp.Balance
 }
 
 // CreateTransaction is a test helper to create a new transaction via an API call.
@@ -74,7 +70,7 @@ func CreateTransaction(t *testing.T, router *gin.Engine, token string, accountId
 	createTransactionReq := dto.CreateTransactionRequest{
 		Description: description,
 		Amount:      decimal.RequireFromString(amount),
-		Date:        time.Now(),
+		Date:        time.Now().UTC(),
 		Type:        model.TransactionType(txType),
 		AccountId:   accountId,
 		CategoryId:  nil,
@@ -96,7 +92,7 @@ func UpdateTransaction(t *testing.T, router *gin.Engine, token string, txId, acc
 	updateDTO := dto.UpdateTransactionRequest{
 		Description: description,
 		Amount:      decimal.RequireFromString(amount),
-		Date:        time.Now(),
+		Date:        time.Now().UTC(),
 		Type:        model.TransactionType(txType),
 		AccountId:   accountId,
 		CategoryId:  nil,
@@ -123,7 +119,7 @@ func CreateTransfer(t *testing.T, router *gin.Engine, token, description, amount
 	createTransferReq := dto.CreateTransactionRequest{
 		Description:          description,
 		Amount:               decimal.RequireFromString(amount),
-		Date:                 time.Now(),
+		Date:                 time.Now().UTC(),
 		Type:                 model.Transfer,
 		AccountId:            fromAccountId,
 		DestinationAccountId: &toAccountId,
@@ -173,7 +169,7 @@ func AssertTransactionFound(t *testing.T, router *gin.Engine, token string, tran
 // It uses the provided user Id as the subject of the token.
 func GenerateTestToken(t *testing.T, userId int64, secretKey string) string {
 	claims := &jwt.RegisteredClaims{
-		ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour * 1)),
+		ExpiresAt: jwt.NewNumericDate(time.Now().UTC().Add(time.Hour * 1)),
 		Subject:   fmt.Sprintf("%d", userId),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

@@ -10,6 +10,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/matheusmazzoni/gofinance-tracker-api/internal/api/handlers"
 	"github.com/matheusmazzoni/gofinance-tracker-api/internal/api/middleware"
+	customvalidator "github.com/matheusmazzoni/gofinance-tracker-api/internal/api/validator"
 	"github.com/matheusmazzoni/gofinance-tracker-api/internal/config"
 	"github.com/matheusmazzoni/gofinance-tracker-api/internal/repository"
 	"github.com/matheusmazzoni/gofinance-tracker-api/internal/service"
@@ -29,6 +30,8 @@ type Server struct {
 
 // NewServer creates and configures a new instance of the API server.
 func NewServer(cfg config.Config, db *sqlx.DB, logger *zerolog.Logger) *Server {
+	customvalidator.Init()
+
 	router := gin.New()
 
 	server := &Server{
@@ -124,6 +127,7 @@ func (s *Server) setupRouter(logger *zerolog.Logger) {
 				accounts.POST("", accountHandler.CreateAccount)
 				accounts.GET("", accountHandler.ListAccounts)
 				accounts.GET("/:id", accountHandler.GetAccount)
+				accounts.GET("/:id/statement", accountHandler.GetAccountStatement)
 				accounts.PUT("/:id", accountHandler.UpdateAccount)
 				accounts.DELETE("/:id", accountHandler.DeleteAccount)
 			}

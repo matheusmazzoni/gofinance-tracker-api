@@ -28,6 +28,7 @@ func NewUserService(repo repository.UserRepository, categoryRepo repository.Cate
 // It hashes the user's password, creates the user record via the repository,
 // and then launches a background task to seed default categories for the new user.
 func (s *UserService) CreateUser(ctx context.Context, user model.User) (int64, error) {
+	logger := zerolog.Ctx(ctx)
 	// Hash the password for secure storage.
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {
@@ -44,7 +45,7 @@ func (s *UserService) CreateUser(ctx context.Context, user model.User) (int64, e
 
 	// Start a background task to create default categories for the new user.
 	// We pass the original context to propagate tracing and cancellation.
-	go s.seedDefaultCategories(ctx, createdUserId)
+	go s.seedDefaultCategories(context.Background(), logger, createdUserId)
 
 	return createdUserId, nil
 }
@@ -57,8 +58,7 @@ func (s *UserService) GetUserById(ctx context.Context, id int64) (*model.User, e
 // seedDefaultCategories creates the initial set of categories for a new user.
 // This function is designed to be run in a goroutine as a non-critical background task.
 // If a category fails to be created, an error is logged, but the process continues.
-func (s *UserService) seedDefaultCategories(ctx context.Context, userId int64) {
-	logger := zerolog.Ctx(ctx)
+func (s *UserService) seedDefaultCategories(ctx context.Context, logger *zerolog.Logger, userId int64) {
 
 	logger.Info().Int64("userId", userId).Msg("Starting to seed default categories for new user")
 
