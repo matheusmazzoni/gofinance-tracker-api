@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/matheusmazzoni/gofinance-tracker-api/compare/v1.0.2...v1.1.0) (2025-07-01)
+
+
+### Features
+
+* create credit card account logic ([#32](https://github.com/matheusmazzoni/gofinance-tracker-api/issues/32)) ([ff6ef27](https://github.com/matheusmazzoni/gofinance-tracker-api/commit/ff6ef2786f8919740260d9d712154a3c745ace2b))
+
 ## [1.0.2](https://github.com/matheusmazzoni/gofinance-tracker-api/compare/v1.0.1...v1.0.2) (2025-06-24)
 
 
