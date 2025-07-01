@@ -30,40 +30,46 @@ func NewAccountHandler(s *service.AccountService) *AccountHandler {
 //	@Tags			accounts
 //	@Accept			json
 //	@Produce		json
-//	@Param			account	body		dto.CreateAccountRequest	true	"Account Data for Creation"
-//	@Success		201		{object}	dto.CreateAccountResponse
+//	@Param			account	body		dto.AccountRequest	true	"Account Data for Creation"
+//	@Success		201		{object}	dto.AccountResponse
 //	@Failure		400		{object}	dto.ErrorResponse
 //	@Failure		401		{object}	dto.ErrorResponse
 //	@Failure		500		{object}	dto.ErrorResponse
 //	@Security		BearerAuth
 //	@Router			/accounts [post]
 func (h *AccountHandler) CreateAccount(c *gin.Context) {
-	var req dto.CreateAccountRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		dto.SendErrorResponse(c, http.StatusBadRequest, "invalid request body: "+err.Error())
+	var req dto.AccountRequest
+	if !dto.BindAndValidate(c, &req) {
 		return
 	}
 
 	userId := c.MustGet("userId").(int64)
 	account := model.Account{
-		UserId:         userId,
-		Name:           req.Name,
-		Type:           req.Type,
-		InitialBalance: req.InitialBalance,
+		UserId:              userId,
+		Name:                req.Name,
+		Type:                req.Type,
+		InitialBalance:      *req.InitialBalance,
+		CreditLimit:         req.CreditLimit,
+		StatementClosingDay: req.StatementClosingDay,
+		PaymentDueDay:       req.PaymentDueDay,
 	}
 
 	id, err := h.service.CreateAccount(c.Request.Context(), account)
 	if err != nil {
 		// Check if the error is for a duplicate key (account name)
 		if strings.Contains(err.Error(), "unique constraint") {
-			dto.SendErrorResponse(c, http.StatusBadRequest, "an account with this name already exists")
+			dto.SendError(c, http.StatusConflict, "account with this name already exists", nil)
 			return
 		}
-		dto.SendErrorResponse(c, http.StatusInternalServerError, "failed to create account")
+		dto.SendError(c, http.StatusInternalServerError, "failed to create account", map[string]string{
+			"message": err.Error(),
+		})
 		return
 	}
 
-	response := dto.CreateAccountResponse{Id: id}
+	response := dto.AccountResponse{
+		Id: id,
+	}
 	dto.SendSuccessResponse(c, http.StatusCreated, response)
 }
 
@@ -82,7 +88,9 @@ func (h *AccountHandler) ListAccounts(c *gin.Context) {
 	userId := c.MustGet("userId").(int64)
 	accounts, err := h.service.ListAccountsByUserId(c.Request.Context(), userId)
 	if err != nil {
-		dto.SendErrorResponse(c, http.StatusInternalServerError, "failed to list accounts")
+		dto.SendError(c, http.StatusInternalServerError, "failed to list accounts", map[string]string{
+			"message": err.Error(),
+		})
 		return
 	}
 
@@ -92,9 +100,7 @@ func (h *AccountHandler) ListAccounts(c *gin.Context) {
 			Id:                  acc.Id,
 			Name:                acc.Name,
 			Type:                acc.Type,
-			Balance:             acc.Balance,
-			CreatedAt:           acc.CreatedAt,
-			UpdatedAt:           acc.UpdatedAt,
+			Balance:             &acc.Balance,
 			StatementClosingDay: acc.StatementClosingDay,
 			PaymentDueDay:       acc.PaymentDueDay,
 		})
@@ -108,7 +114,7 @@ func (h *AccountHandler) ListAccounts(c *gin.Context) {
 //	@Description	Returns the details of a single account belonging to the logged-in user
 //	@Tags			accounts
 //	@Produce		json
-//	@Param			id	path		int	true	"Account ID"
+//	@Param			id	path		int	true	"Account Id"
 //	@Success		200	{object}	dto.AccountResponse
 //	@Failure		401	{object}	dto.ErrorResponse
 //	@Failure		404	{object}	dto.ErrorResponse
@@ -120,10 +126,12 @@ func (h *AccountHandler) GetAccount(c *gin.Context) {
 	account, err := h.service.GetAccountById(c.Request.Context(), id, userId)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			dto.SendErrorResponse(c, http.StatusNotFound, "account not found")
+			dto.SendError(c, http.StatusNotFound, "account not found", nil)
 			return
 		}
-		dto.SendErrorResponse(c, http.StatusInternalServerError, "failed to get account")
+		dto.SendError(c, http.StatusInternalServerError, "failed to get account", map[string]string{
+			"message": err.Error(),
+		})
 		return
 	}
 
@@ -131,10 +139,8 @@ func (h *AccountHandler) GetAccount(c *gin.Context) {
 		Id:                  account.Id,
 		Name:                account.Name,
 		Type:                account.Type,
-		InitialBalance:      account.InitialBalance,
-		Balance:             account.Balance,
-		CreatedAt:           account.CreatedAt,
-		UpdatedAt:           account.UpdatedAt,
+		InitialBalance:      &account.InitialBalance,
+		Balance:             &account.Balance,
 		StatementClosingDay: account.StatementClosingDay,
 		PaymentDueDay:       account.PaymentDueDay,
 	})
@@ -147,8 +153,8 @@ func (h *AccountHandler) GetAccount(c *gin.Context) {
 //	@Tags			accounts
 //	@Accept			json
 //	@Produce		json
-//	@Param			id		path		int							true	"Account ID"
-//	@Param			account	body		dto.UpdateAccountRequest	true	"Data for Update"
+//	@Param			id		path		int					true	"Account ID"
+//	@Param			account	body		dto.AccountRequest	true	"Data for Update"
 //	@Success		200		{object}	dto.AccountResponse
 //	@Failure		400		{object}	dto.ErrorResponse
 //	@Failure		401		{object}	dto.ErrorResponse
@@ -157,22 +163,28 @@ func (h *AccountHandler) GetAccount(c *gin.Context) {
 //	@Router			/accounts/{id} [put]
 func (h *AccountHandler) UpdateAccount(c *gin.Context) {
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	userId := c.MustGet("userId").(int64)
 
-	var req dto.UpdateAccountRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		dto.SendErrorResponse(c, http.StatusBadRequest, "invalid request body: "+err.Error())
+	var req dto.AccountRequest
+	if !dto.BindAndValidate(c, &req) {
 		return
 	}
 
-	account := model.Account{Name: req.Name, Type: req.Type}
-	updatedAcc, err := h.service.UpdateAccount(c.Request.Context(), id, userId, account)
+	userId := c.MustGet("userId").(int64)
+
+	updatedAcc, err := h.service.UpdateAccount(c.Request.Context(), model.Account{
+		Id:     id,
+		UserId: userId,
+		Name:   req.Name,
+		Type:   req.Type,
+	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			dto.SendErrorResponse(c, http.StatusNotFound, "account not found")
+			dto.SendError(c, http.StatusNotFound, "account not found", nil)
 			return
 		}
-		dto.SendErrorResponse(c, http.StatusInternalServerError, "failed to update account")
+		dto.SendError(c, http.StatusInternalServerError, "failed to update account", map[string]string{
+			"message": err.Error(),
+		})
 		return
 	}
 
@@ -180,10 +192,8 @@ func (h *AccountHandler) UpdateAccount(c *gin.Context) {
 		Id:                  updatedAcc.Id,
 		Name:                updatedAcc.Name,
 		Type:                updatedAcc.Type,
-		InitialBalance:      updatedAcc.InitialBalance,
-		Balance:             updatedAcc.Balance,
-		CreatedAt:           updatedAcc.CreatedAt,
-		UpdatedAt:           updatedAcc.UpdatedAt,
+		InitialBalance:      &updatedAcc.InitialBalance,
+		Balance:             &updatedAcc.Balance,
 		StatementClosingDay: updatedAcc.StatementClosingDay,
 		PaymentDueDay:       updatedAcc.PaymentDueDay,
 	})
@@ -208,39 +218,42 @@ func (h *AccountHandler) DeleteAccount(c *gin.Context) {
 	err := h.service.DeleteAccount(c.Request.Context(), id, userId)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			dto.SendErrorResponse(c, http.StatusNotFound, "account not found")
+			dto.SendError(c, http.StatusNotFound, "account not found", nil)
 			return
 		}
 		// Check for a foreign key error, indicating the account is in use.
 		if strings.Contains(err.Error(), "violates foreign key constraint") {
-			dto.SendErrorResponse(c, http.StatusConflict, "cannot delete account with associated transactions")
+			dto.SendError(c, http.StatusConflict, "cannot delete account with associated transactions", nil)
 			return
 		}
-		dto.SendErrorResponse(c, http.StatusInternalServerError, "failed to delete account")
+		dto.SendError(c, http.StatusInternalServerError, "failed to delete account", map[string]string{
+			"message": err.Error(),
+		})
 		return
 	}
 	c.Status(http.StatusNoContent)
 }
 
 // GetAccountStatement godoc
-// @Summary      Get a credit card statement
-// @Description  Retrieves all transactions and balance details for a specific credit card billing cycle. Defaults to the current statement if month/year are not provided.
-// @Tags         accounts
-// @Produce      json
-// @Param        id    path int    true "Account Id"
-// @Param        month query int false "The month of the statement's due date (1-12)"
-// @Param        year  query int false "The year of the statement's due date (e.g., 2025)"
-// @Success      200 {object} dto.StatementResponseDTO
-// @Failure      400 {object} dto.ErrorResponse
-// @Failure      404 {object} dto.ErrorResponse
-// @Security     BearerAuth
-// @Router       /accounts/{id}/statement [get]
+//
+//	@Summary		Get a credit card statement
+//	@Description	Retrieves all transactions and balance details for a specific credit card billing cycle. Defaults to the current statement if month/year are not provided.
+//	@Tags			accounts
+//	@Produce		json
+//	@Param			id		path		int	true	"Account Id"
+//	@Param			month	query		int	false	"The month of the statement's due date (1-12)"
+//	@Param			year	query		int	false	"The year of the statement's due date (e.g., 2025)"
+//	@Success		200		{object}	dto.StatementResponse
+//	@Failure		400		{object}	dto.ErrorResponse
+//	@Failure		404		{object}	dto.ErrorResponse
+//	@Security		BearerAuth
+//	@Router			/accounts/{id}/statement [get]
 func (h *AccountHandler) GetAccountStatement(c *gin.Context) {
 	logger := zerolog.Ctx(c.Request.Context())
 
 	accountId, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		dto.SendErrorResponse(c, http.StatusBadRequest, "invalid account Id format")
+		dto.SendError(c, http.StatusBadRequest, "invalid account Id format", nil)
 		return
 	}
 	userId := c.MustGet("userId").(int64)
@@ -255,15 +268,17 @@ func (h *AccountHandler) GetAccountStatement(c *gin.Context) {
 	statementDetails, err := h.service.GetStatementDetails(c.Request.Context(), userId, accountId, year, month)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
-			dto.SendErrorResponse(c, http.StatusNotFound, err.Error())
+			dto.SendError(c, http.StatusNotFound, err.Error(), nil)
 			return
 		}
 		if strings.Contains(err.Error(), "only valid for credit card") {
-			dto.SendErrorResponse(c, http.StatusBadRequest, err.Error())
+			dto.SendError(c, http.StatusBadRequest, err.Error(), nil)
 			return
 		}
 		logger.Error().Err(err).Msg("failed to get statement details")
-		dto.SendErrorResponse(c, http.StatusInternalServerError, "failed to generate statement report")
+		dto.SendError(c, http.StatusInternalServerError, "failed to generate statement report", map[string]string{
+			"message": err.Error(),
+		})
 		return
 	}
 

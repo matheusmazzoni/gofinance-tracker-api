@@ -171,14 +171,14 @@ func TestAccountService(t *testing.T) {
 		ctx := context.Background()
 
 		// Arrange
-		accountToUpdate := model.Account{Name: "Updated Name"}
+		accountToUpdate := model.Account{Id: 10, UserId: 1, Name: "Old Name"}
 		accountAfterUpdate := &model.Account{Id: 10, UserId: 1, Name: "Updated Name"}
 		mockAccountRepo.On("Update", ctx, mock.Anything).Return(nil).Once()
 		mockAccountRepo.On("GetById", ctx, int64(10), int64(1)).Return(accountAfterUpdate, nil).Once()
 		mockAccountRepo.On("GetCurrentBalance", ctx, int64(10), int64(1)).Return(decimal.NewFromInt(100), nil).Once()
 
 		// Act
-		resultAccount, err := accountService.UpdateAccount(ctx, 10, 1, accountToUpdate)
+		resultAccount, err := accountService.UpdateAccount(ctx, accountToUpdate)
 
 		// Assert
 		assert.NoError(t, err)

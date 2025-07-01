@@ -49,7 +49,7 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 	if err != nil {
 		// Verifica se o erro é de chave duplicada no e-mail
 		if strings.Contains(err.Error(), "unique constraint") {
-			dto.SendErrorResponse(c, http.StatusBadRequest, "a user with this email already exists")
+			dto.SendErrorResponse(c, http.StatusConflict, "a user with this email already exists")
 			return
 		}
 		dto.SendErrorResponse(c, http.StatusInternalServerError, "failed to create user")

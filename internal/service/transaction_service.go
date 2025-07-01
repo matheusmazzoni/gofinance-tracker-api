@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 
 	"github.com/matheusmazzoni/gofinance-tracker-api/internal/api/dto"
 	"github.com/matheusmazzoni/gofinance-tracker-api/internal/model"
@@ -13,12 +14,13 @@ import (
 // Sentinel errors are used throughout the service to provide specific,
 // checkable error types to the calling layer (e.g., the API handler).
 var (
-	ErrAmountNotPositive          = errors.New("transaction amount must be positive")
-	ErrSourceAccountNotFound      = errors.New("source account not found or does not belong to the user")
-	ErrDestinationAccountRequired = errors.New("destination account is required for a transfer")
-	ErrSameAccounts               = errors.New("source and destination accounts cannot be the same")
-	ErrDestinationAccountNotFound = errors.New("destination account not found or does not belong to the user")
-	ErrNewAccountNotFound         = errors.New("new account not found or does not belong to the user")
+	ErrAmountNotPositive               = errors.New("transaction amount must be positive")
+	ErrSourceAccountNotFound           = errors.New("source account not found or does not belong to the user")
+	ErrDestinationAccountRequired      = errors.New("destination account is required for a transfer")
+	ErrSameAccounts                    = errors.New("source and destination accounts cannot be the same")
+	ErrDestinationAccountNotFound      = errors.New("destination account not found or does not belong to the user")
+	ErrNewAccountNotFound              = errors.New("new account not found or does not belong to the user")
+	ErrSourceAccountTransferCreditCard = errors.New("transfer transaction is not allowed for source account as credit_card")
 )
 
 // TransactionService encapsulates the business logic for transactions.
@@ -44,27 +46,58 @@ func (s *TransactionService) CreateTransaction(ctx context.Context, tx model.Tra
 	}
 
 	// Verify that the source account exists and belongs to the user.
-	// The repository's GetById method handles checking both account ID and user ID.
-	_, err := s.accountRepo.GetById(ctx, tx.AccountId, tx.UserId)
+	sourceAccount, err := s.accountRepo.GetById(ctx, tx.AccountId, tx.UserId)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			// Return a clear, checkable error if the account is not found.
 			return 0, ErrSourceAccountNotFound
 		}
-		// Return other unexpected database errors.
-		return 0, err
+		return 0, fmt.Errorf("failed to get source account: %w", err)
 	}
 
-	// If it's a transfer, validate the destination account.
+	// Credit card limit validation for expense transactions
+	if sourceAccount.Type == model.CreditCard && sourceAccount.CreditLimit != nil {
+
+		// Get current balance (negative value represents debt)
+		currentBalance, err := s.accountRepo.GetCurrentBalance(ctx, tx.AccountId, tx.UserId)
+		if err != nil {
+			return 0, fmt.Errorf("failed to get current balance for credit card validation: %w", err)
+		}
+
+		// Calculate what the new balance would be after this expense
+		// Example: current balance -800, expense 50 -> new balance -850
+		newBalance := currentBalance.Sub(tx.Amount)
+
+		// Check if the absolute value of the new debt exceeds the credit limit
+		// Example: abs(-850) = 850, limit = 1000 -> OK
+		// Example: abs(-1100) = 1100, limit = 1000 -> ERROR
+		if newBalance.Abs().GreaterThan(*sourceAccount.CreditLimit) {
+			availableCredit := sourceAccount.CreditLimit.Add(currentBalance)
+			return 0, fmt.Errorf(
+				"transaction exceeds credit card limit. Limit: %s, Current Debt: %s, New Debt: %s, Avaliable Credit: %s",
+				sourceAccount.CreditLimit.String(),
+				currentBalance.Abs().String(),
+				newBalance.Abs().String(),
+				availableCredit.String(),
+			)
+		}
+	}
+
+	// Transfer-specific validations
 	if tx.Type == model.Transfer {
+		// Transfer must have a destination account
 		if tx.DestinationAccountId == nil {
 			return 0, ErrDestinationAccountRequired
 		}
+		// Cannot transfer to the same account
 		if tx.AccountId == *tx.DestinationAccountId {
 			return 0, ErrSameAccounts
 		}
+		// Credit cards cannot be used as source for transfers
+		if sourceAccount.Type == model.CreditCard {
+			return 0, ErrSourceAccountTransferCreditCard
+		}
 
-		// Verify the destination account also exists and belongs to the user.
+		// Verify destination account exists and belongs to the user
 		_, err := s.accountRepo.GetById(ctx, *tx.DestinationAccountId, tx.UserId)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
@@ -74,7 +107,6 @@ func (s *TransactionService) CreateTransaction(ctx context.Context, tx model.Tra
 		}
 	}
 
-	// If all validations pass, we can safely create the transaction.
 	return s.repo.Create(ctx, tx)
 }
 

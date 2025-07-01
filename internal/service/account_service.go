@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"time"
 
@@ -40,7 +41,6 @@ func NewAccountService(repo repository.AccountRepository, transactionRepo reposi
 }
 
 func (s *AccountService) CreateAccount(ctx context.Context, acc model.Account) (int64, error) {
-	// Lógica de negócio: Ex: verificar se já existe uma conta com o mesmo nome para este usuário.
 	return s.repo.Create(ctx, acc)
 }
 
@@ -111,23 +111,21 @@ func (s *AccountService) ListAccountsByUserId(ctx context.Context, userId int64)
 	return accounts, nil
 }
 
-func (s *AccountService) UpdateAccount(ctx context.Context, id, userId int64, acc model.Account) (*model.Account, error) {
-	acc.Id = id
-	acc.UserId = userId
+func (s *AccountService) UpdateAccount(ctx context.Context, acc model.Account) (*model.Account, error) {
+	logger := zerolog.Ctx(ctx)
+
 	err := s.repo.Update(ctx, acc)
 	if err != nil {
 		return nil, err
 	}
-	balance, err := s.repo.GetCurrentBalance(ctx, id, userId)
+
+	balance, err := s.repo.GetCurrentBalance(ctx, acc.Id, acc.UserId)
 	if err != nil {
-		// Loga o erro, mas talvez não queira que a requisição inteira falhe por isso
-		log.Error().Err(err).Int64("account_id", id).Msg("failed to calculate account balance")
-		// Você pode decidir retornar o objeto da conta com saldo zero ou o erro.
-		// Vamos retornar o erro para sermos explícitos.
+		logger.Error().Err(err).Int64("account_id", acc.Id).Msg("failed to calculate account balance")
 		return nil, err
 	}
 
-	account, err := s.repo.GetById(ctx, id, userId)
+	account, err := s.repo.GetById(ctx, acc.Id, acc.UserId)
 	if err != nil {
 		return nil, err
 	}
@@ -137,29 +135,25 @@ func (s *AccountService) UpdateAccount(ctx context.Context, id, userId int64, ac
 }
 
 func (s *AccountService) DeleteAccount(ctx context.Context, id, userId int64) error {
-	// Primeiro, verificamos se a conta realmente existe e pertence ao usuário.
-	// Isso evita iniciar uma transação desnecessariamente.
+	logger := zerolog.Ctx(ctx)
+
 	_, err := s.repo.GetById(ctx, id, userId)
 	if err != nil {
-		// Se err for sql.ErrNoRows, a conta não foi encontrada.
-		// Retornamos o erro original.
+		if errors.Is(err, sql.ErrNoRows) {
+			return errors.New("account not found to be deleted")
+		}
 		return err
 	}
 
-	// PASSO 1: Deletar todas as transações associadas à conta.
-	// O filtro por userId aqui é uma camada extra de segurança.
 	err = s.transactionRepo.DeleteByAccountId(ctx, userId, id)
 	if err != nil {
-		// Se não conseguirmos deletar as transações, abortamos a operação.
-		log.Error().Err(err).Msg("failed to delete transactions for account")
+		logger.Error().Err(err).Msg("failed to delete transactions for account")
 		return errors.New("could not delete associated transactions")
 	}
 
-	// PASSO 2: Agora que as transações "filhas" foram removidas,
-	// podemos deletar a conta "pai" com segurança.
 	err = s.repo.Delete(ctx, id, userId)
 	if err != nil {
-		log.Error().Err(err).Msg("failed to delete account after deleting transactions")
+		logger.Error().Err(err).Msg("failed to delete account after deleting transactions")
 		return errors.New("could not delete account after removing transactions")
 	}
 
@@ -177,8 +171,11 @@ func (s *AccountService) GetStatementDetails(ctx context.Context, userId, accoun
 	}
 
 	// Validate account type and billing cycle data
-	if err := s.validateCreditCardAccount(account); err != nil {
-		return nil, err
+	if account.Type != model.CreditCard {
+		return nil, errors.New("operation only valid for credit card accounts")
+	}
+	if account.StatementClosingDay == nil || account.PaymentDueDay == nil {
+		return nil, errors.New("credit card account must have billing cycle data")
 	}
 
 	// Calculate statement period dates
@@ -211,17 +208,6 @@ func (s *AccountService) GetStatementDetails(ctx context.Context, userId, accoun
 	}
 
 	return statementDetails, nil
-}
-
-// validateCreditCardAccount validates that the account is a credit card with required billing data
-func (s *AccountService) validateCreditCardAccount(account *model.Account) error {
-	if account.Type != model.CreditCard {
-		return errors.New("operation only valid for credit card accounts")
-	}
-	if account.StatementClosingDay == nil || account.PaymentDueDay == nil {
-		return errors.New("credit card account must have billing cycle data")
-	}
-	return nil
 }
 
 // calculateStatementPeriod calculates the start and end dates for a statement period

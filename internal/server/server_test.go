@@ -70,7 +70,7 @@ func TestAuthMiddleware(t *testing.T) {
 		router.ServeHTTP(recorder, req)
 
 		// Assert
-		require.Equal(t, http.StatusUnauthorized, recorder.Code)
+		assert.Equal(t, http.StatusUnauthorized, recorder.Code)
 
 		var errorResponse dto.ErrorResponse
 		err := json.Unmarshal(recorder.Body.Bytes(), &errorResponse)
@@ -88,7 +88,7 @@ func TestAuthMiddleware(t *testing.T) {
 		router.ServeHTTP(recorder, req)
 
 		// Assert
-		require.Equal(t, http.StatusUnauthorized, recorder.Code)
+		assert.Equal(t, http.StatusUnauthorized, recorder.Code)
 		assert.Contains(t, recorder.Body.String(), "bearer token required")
 	})
 
@@ -105,7 +105,7 @@ func TestAuthMiddleware(t *testing.T) {
 		router.ServeHTTP(recorder, req)
 
 		// Assert
-		require.Equal(t, http.StatusUnauthorized, recorder.Code)
+		assert.Equal(t, http.StatusUnauthorized, recorder.Code)
 		assert.Contains(t, recorder.Body.String(), "invalid token")
 	})
 
@@ -114,7 +114,7 @@ func TestAuthMiddleware(t *testing.T) {
 
 		// Gera um token que expirou há uma hora.
 		claims := &jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(-1 * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().UTC().Add(-1 * time.Hour)),
 			Subject:   "123",
 		}
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -127,7 +127,7 @@ func TestAuthMiddleware(t *testing.T) {
 		router.ServeHTTP(recorder, req)
 
 		// Assert
-		require.Equal(t, http.StatusUnauthorized, recorder.Code)
+		assert.Equal(t, http.StatusUnauthorized, recorder.Code)
 		assert.Contains(t, recorder.Body.String(), "invalid token")
 	})
 
@@ -142,7 +142,7 @@ func TestAuthMiddleware(t *testing.T) {
 		router.ServeHTTP(recorder, req)
 
 		// Assert
-		require.Equal(t, http.StatusOK, recorder.Code)
+		assert.Equal(t, http.StatusOK, recorder.Code)
 		assert.Contains(t, recorder.Body.String(), "access granted")
 	})
 	t.Run("should return 401 Unauthorized when token is missing", func(t *testing.T) {
@@ -198,7 +198,7 @@ func TestUserRoutes(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		testServer.router.ServeHTTP(recorder, req)
 
-		require.Equal(http.StatusCreated, recorder.Code, "the user should be created successfully")
+		assert.Equal(t, http.StatusCreated, recorder.Code, "the user should be created successfully")
 	})
 	t.Run("should return 400 Bad Request when creating a user with a duplicate email", func(t *testing.T) {
 
@@ -216,7 +216,7 @@ func TestUserRoutes(t *testing.T) {
 		testServer.router.ServeHTTP(recorder1, req1)
 
 		// Garante que o primeiro usuário foi criado com sucesso.
-		require.Equal(http.StatusCreated, recorder1.Code, "the first user should be created successfully")
+		assert.Equal(t, http.StatusCreated, recorder1.Code, "the first user should be created successfully")
 
 		// Arrange (2): Prepara a requisição para o segundo usuário com o mesmo e-mail.
 		secondUserDTO := dto.CreateUserRequest{
@@ -231,11 +231,9 @@ func TestUserRoutes(t *testing.T) {
 
 		recorder2 := httptest.NewRecorder()
 
-		// Act: Faz a segunda requisição, que deve falhar.
 		testServer.router.ServeHTTP(recorder2, req2)
 
-		// Assert: Verifica se a resposta foi a esperada.
-		require.Equal(http.StatusBadRequest, recorder2.Code, "expected status 400 for duplicate email")
+		assert.Equal(t, http.StatusConflict, recorder2.Code, "expected status 409 for duplicate email")
 
 		var errorResponse dto.ErrorResponse
 		err := json.Unmarshal(recorder2.Body.Bytes(), &errorResponse)
@@ -264,13 +262,13 @@ func TestUserRoutes(t *testing.T) {
 
 		// Act 1: Create the new user
 		recorderCreate := testhelper.MakeAPIRequest(t, testServer.router, "POST", "/v1/users", "", bytes.NewBuffer(createBody))
-		require.Equal(http.StatusCreated, recorderCreate.Code)
+		assert.Equal(t, http.StatusCreated, recorderCreate.Code)
 
 		// Act 2: Login as the new user to get their token
 		loginDTO := dto.LoginRequest{Email: newUserEmail, Password: newUserPassword}
 		loginBody, _ := json.Marshal(loginDTO)
 		recorderLogin := testhelper.MakeAPIRequest(t, testServer.router, "POST", "/v1/auth/login", "", bytes.NewBuffer(loginBody))
-		require.Equal(http.StatusOK, recorderLogin.Code)
+		assert.Equal(t, http.StatusOK, recorderLogin.Code)
 
 		var loginResp dto.LoginResponse
 		err := json.Unmarshal(recorderLogin.Body.Bytes(), &loginResp)
@@ -331,7 +329,7 @@ func TestLoginRoutes(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		testServer.router.ServeHTTP(recorder, req)
 
-		require.Equal(http.StatusOK, recorder.Code)
+		assert.Equal(t, http.StatusOK, recorder.Code)
 
 		var loginResponse dto.LoginResponse
 		_ = json.Unmarshal(recorder.Body.Bytes(), &loginResponse)
@@ -350,11 +348,11 @@ func TestLoginRoutes(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		testServer.router.ServeHTTP(recorder, req)
 
-		require.Equal(http.StatusUnauthorized, recorder.Code)
+		assert.Equal(t, http.StatusUnauthorized, recorder.Code)
 
 		var errorResponse dto.ErrorResponse
 		_ = json.Unmarshal(recorder.Body.Bytes(), &errorResponse)
-		require.Equal(errorResponse.Error, "invalid credentials")
+		assert.Equal(t, errorResponse.Error, "invalid credentials")
 	})
 	t.Run("inexistet email login", func(t *testing.T) {
 		loginRequest := dto.LoginRequest{
@@ -369,11 +367,11 @@ func TestLoginRoutes(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		testServer.router.ServeHTTP(recorder, req)
 
-		require.Equal(http.StatusUnauthorized, recorder.Code)
+		assert.Equal(t, http.StatusUnauthorized, recorder.Code)
 
 		var errorResponse dto.ErrorResponse
 		_ = json.Unmarshal(recorder.Body.Bytes(), &errorResponse)
-		require.Equal(errorResponse.Error, "invalid credentials")
+		assert.Equal(t, errorResponse.Error, "invalid credentials")
 	})
 }
 
@@ -387,14 +385,248 @@ func TestAccountRoutes(t *testing.T) {
 	accountRepo := repository.NewAccountRepository(testServer.db)
 	userRepo := repository.NewUserRepository(testServer.db)
 
+	t.Run("validate account requests", func(t *testing.T) {
+
+		userId, _ := userRepo.Create(ctx, model.User{Name: "validation", Email: "validation@test.com", PasswordHash: "validation_test_key"})
+		token := testhelper.GenerateTestToken(t, userId, testServer.config.JWTSecretKey)
+
+		tests := []struct {
+			name          string
+			request       dto.AccountRequest
+			wantError     bool
+			expectedError dto.ErrorResponse
+		}{
+			{
+				name: "valid checking account",
+				request: dto.AccountRequest{
+					Name:           "Valid Checking Account",
+					Type:           "checking",
+					InitialBalance: testhelper.Ptr(decimal.NewFromFloat(1000.0)),
+				},
+				wantError: false,
+			},
+			{
+				name: "valid credit card account",
+				request: dto.AccountRequest{
+					Name:                "Valid Credit Card",
+					Type:                "credit_card",
+					InitialBalance:      testhelper.Ptr(decimal.NewFromFloat(0.0)),
+					CreditLimit:         testhelper.Ptr(decimal.NewFromFloat(5000.0)),
+					PaymentDueDay:       testhelper.Ptr(15),
+					StatementClosingDay: testhelper.Ptr(10),
+				},
+				wantError: false,
+			},
+			{
+				name: "credit card without credit limit",
+				request: dto.AccountRequest{
+					Name:                "Credit Card",
+					Type:                "credit_card",
+					InitialBalance:      testhelper.Ptr(decimal.NewFromInt(0)),
+					PaymentDueDay:       testhelper.Ptr(15),
+					StatementClosingDay: testhelper.Ptr(10),
+				},
+				wantError:     true,
+				expectedError: dto.ErrorResponse{Error: "Validation failed", Details: map[string]string{"credit_limit": "The 'credit_limit' field is required for credit card accounts."}},
+			},
+			{
+				name: "credit card without due day",
+				request: dto.AccountRequest{
+					Name:                "Credit Card",
+					Type:                "credit_card",
+					InitialBalance:      testhelper.Ptr(decimal.NewFromInt(0)),
+					CreditLimit:         testhelper.Ptr(decimal.NewFromFloat(5000.0)),
+					StatementClosingDay: testhelper.Ptr(10),
+				},
+				wantError:     true,
+				expectedError: dto.ErrorResponse{Error: "Validation failed", Details: map[string]string{"payment_due_day": "The 'payment_due_day' field is required for credit card accounts."}},
+			},
+			{
+				name: "credit card without closing day",
+				request: dto.AccountRequest{
+					Name:           "Credit Card",
+					Type:           "credit_card",
+					InitialBalance: testhelper.Ptr(decimal.NewFromInt(0)),
+					CreditLimit:    testhelper.Ptr(decimal.NewFromFloat(5000.0)),
+					PaymentDueDay:  testhelper.Ptr(15),
+				},
+				wantError:     true,
+				expectedError: dto.ErrorResponse{Error: "Validation failed", Details: map[string]string{"statement_closing_day": "The 'statement_closing_day' field is required for credit card accounts."}},
+			},
+			{
+				name: "credit card with zero credit limit",
+				request: dto.AccountRequest{
+					Name:                "Credit Card",
+					Type:                "credit_card",
+					InitialBalance:      testhelper.Ptr(decimal.NewFromInt(0)),
+					CreditLimit:         testhelper.Ptr(decimal.NewFromFloat(0.0)),
+					PaymentDueDay:       testhelper.Ptr(15),
+					StatementClosingDay: testhelper.Ptr(10),
+				},
+				wantError: true,
+				expectedError: dto.ErrorResponse{
+					Error: "Validation failed",
+					Details: map[string]string{
+						"credit_limit": "The 'credit_limit' field must be greater than 0 for credit card accounts.",
+					},
+				},
+			},
+			{
+				name: "credit card with negative credit limit",
+				request: dto.AccountRequest{
+					Name:                "Credit Card",
+					Type:                "credit_card",
+					InitialBalance:      testhelper.Ptr(decimal.NewFromInt(0)),
+					CreditLimit:         testhelper.Ptr(decimal.NewFromFloat(-1000.0)),
+					PaymentDueDay:       testhelper.Ptr(15),
+					StatementClosingDay: testhelper.Ptr(10),
+				},
+				wantError: true,
+				expectedError: dto.ErrorResponse{
+					Error: "Validation failed",
+					Details: map[string]string{
+						"credit_limit": "The 'credit_limit' field must be greater than 0 for credit card accounts.",
+					},
+				},
+			},
+			{
+				name: "checking account with credit card fields",
+				request: dto.AccountRequest{
+					Name:                "Checking",
+					Type:                "checking",
+					InitialBalance:      testhelper.Ptr(decimal.NewFromInt(0)),
+					CreditLimit:         testhelper.Ptr(decimal.NewFromFloat(5000.0)),
+					PaymentDueDay:       testhelper.Ptr(15),
+					StatementClosingDay: testhelper.Ptr(10),
+				},
+				wantError: true,
+				expectedError: dto.ErrorResponse{
+					Error: "Validation failed",
+					Details: map[string]string{
+						"credit_limit":          "The 'credit_limit' field is not allowed for this account type.",
+						"payment_due_day":       "The 'payment_due_day' field is not allowed for this account type.",
+						"statement_closing_day": "The 'statement_closing_day' field is not allowed for this account type.",
+					},
+				},
+			},
+			{
+				name: "invalid account type",
+				request: dto.AccountRequest{
+					Name: "Invalid Account",
+					Type: "invalid",
+				},
+				wantError:     true,
+				expectedError: dto.ErrorResponse{Error: "Validation failed", Details: map[string]string{"initial_balance": "The 'initial_balance' field is required.", "type": "The 'type' field must be one of: [checking savings credit_card other]."}},
+			},
+			{
+				name: "empty name",
+				request: dto.AccountRequest{
+					Name: "",
+					Type: "checking",
+				},
+				wantError:     true,
+				expectedError: dto.ErrorResponse{Error: "Validation failed", Details: map[string]string{"initial_balance": "The 'initial_balance' field is required.", "name": "The 'name' field is required."}},
+			},
+			{
+				name: "name too long",
+				request: dto.AccountRequest{
+					Name:           "This is a very long account name that exceeds the maximum length limit of 100 characters and should fail validation",
+					Type:           "checking",
+					InitialBalance: testhelper.Ptr(decimal.NewFromInt(0)),
+				},
+				wantError:     true,
+				expectedError: dto.ErrorResponse{Error: "Validation failed", Details: map[string]string{"name": "The 'name' field must not exceed 100 characters."}},
+			},
+			{
+				name: "invalid due day - too low",
+				request: dto.AccountRequest{
+					Name:                "Credit Card",
+					Type:                "credit_card",
+					InitialBalance:      testhelper.Ptr(decimal.NewFromInt(0)),
+					CreditLimit:         testhelper.Ptr(decimal.NewFromFloat(5000.0)),
+					PaymentDueDay:       testhelper.Ptr(0),
+					StatementClosingDay: testhelper.Ptr(10),
+				},
+				wantError:     true,
+				expectedError: dto.ErrorResponse{Error: "Validation failed", Details: map[string]string{"payment_due_day": "The 'payment_due_day' field must be between 1 and 31. '0' values is not a valid."}},
+			},
+			{
+				name: "invalid due day - too high",
+				request: dto.AccountRequest{
+					Name:                "Credit Card",
+					Type:                "credit_card",
+					InitialBalance:      testhelper.Ptr(decimal.NewFromInt(0)),
+					CreditLimit:         testhelper.Ptr(decimal.NewFromFloat(5000.0)),
+					PaymentDueDay:       testhelper.Ptr(32),
+					StatementClosingDay: testhelper.Ptr(10),
+				},
+				wantError:     true,
+				expectedError: dto.ErrorResponse{Error: "Validation failed", Details: map[string]string{"payment_due_day": "The 'payment_due_day' field must be between 1 and 31. '32' values is not a valid."}},
+			},
+			{
+				name: "invalid closing day - too low",
+				request: dto.AccountRequest{
+					Name:                "Credit Card",
+					Type:                "credit_card",
+					InitialBalance:      testhelper.Ptr(decimal.NewFromInt(0)),
+					CreditLimit:         testhelper.Ptr(decimal.NewFromFloat(5000.0)),
+					PaymentDueDay:       testhelper.Ptr(15),
+					StatementClosingDay: testhelper.Ptr(0),
+				},
+				wantError:     true,
+				expectedError: dto.ErrorResponse{Error: "Validation failed", Details: map[string]string{"statement_closing_day": "The 'statement_closing_day' field must be between 1 and 31. '0' values is not a valid."}},
+			},
+			{
+				name: "invalid closing day - too high",
+				request: dto.AccountRequest{
+					Name:                "Credit Card",
+					Type:                "credit_card",
+					InitialBalance:      testhelper.Ptr(decimal.NewFromInt(0)),
+					CreditLimit:         testhelper.Ptr(decimal.NewFromFloat(5000.0)),
+					PaymentDueDay:       testhelper.Ptr(15),
+					StatementClosingDay: testhelper.Ptr(32),
+				},
+				wantError: true,
+				expectedError: dto.ErrorResponse{
+					Error: "Validation failed",
+					Details: map[string]string{
+						"statement_closing_day": "The 'statement_closing_day' field must be between 1 and 31. '32' values is not a valid.",
+					},
+				},
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				body, err := json.Marshal(tt.request)
+				require.NoError(err)
+				recorder := testhelper.MakeAPIRequest(t, testServer.router, "POST", "/v1/accounts", token, bytes.NewBuffer(body))
+
+				if tt.wantError {
+					var errorBody dto.ErrorResponse
+					err = json.Unmarshal(recorder.Body.Bytes(), &errorBody)
+					require.NoError(err)
+					require.Equal(tt.expectedError, errorBody)
+
+				} else {
+					var responseBody dto.AccountResponse
+					err = json.Unmarshal(recorder.Body.Bytes(), &responseBody)
+					require.NoError(err)
+					require.NotZero(responseBody.Id)
+				}
+
+			})
+		}
+
+	})
 	t.Run("create an account successfully", func(t *testing.T) {
 		userId, _ := userRepo.Create(ctx, model.User{Name: "UserSuccessfullyCreated", Email: "success@test.com", PasswordHash: "hash"})
 		token := testhelper.GenerateTestToken(t, userId, testServer.config.JWTSecretKey)
 
-		accountDTO := dto.CreateAccountRequest{
+		accountDTO := dto.AccountRequest{
 			Name:           "My API Test Account",
 			Type:           model.Checking,
-			InitialBalance: decimal.NewFromInt(100),
+			InitialBalance: testhelper.Ptr(decimal.NewFromInt(100)),
 		}
 		body, _ := json.Marshal(accountDTO)
 
@@ -406,9 +638,9 @@ func TestAccountRoutes(t *testing.T) {
 
 		testServer.router.ServeHTTP(recorder, req)
 
-		require.Equal(http.StatusCreated, recorder.Code)
+		assert.Equal(t, http.StatusCreated, recorder.Code)
 
-		var responseBody dto.CreateAccountResponse
+		var responseBody dto.AccountResponse
 		err := json.Unmarshal(recorder.Body.Bytes(), &responseBody)
 		require.NoError(err)
 		require.NotZero(responseBody.Id)
@@ -417,10 +649,10 @@ func TestAccountRoutes(t *testing.T) {
 		userId, _ := userRepo.Create(ctx, model.User{Name: "MultipleAccountsDiffTypes", Email: "multipleAccountsDiffTypes@test.com", PasswordHash: "hash"})
 		token := testhelper.GenerateTestToken(t, userId, testServer.config.JWTSecretKey)
 
-		checkingAccountDTO := dto.CreateAccountRequest{
+		checkingAccountDTO := dto.AccountRequest{
 			Name:           "Checking Account",
 			Type:           model.Checking,
-			InitialBalance: decimal.NewFromInt(1000),
+			InitialBalance: testhelper.Ptr(decimal.NewFromInt(1000)),
 		}
 		checkingBody, _ := json.Marshal(checkingAccountDTO)
 		reqChecking, _ := http.NewRequest("POST", "/v1/accounts", bytes.NewBuffer(checkingBody))
@@ -432,13 +664,16 @@ func TestAccountRoutes(t *testing.T) {
 		testServer.router.ServeHTTP(recorderChecking, reqChecking)
 
 		// --- ASSERT 1: Verify the first creation was successful ---
-		require.Equal(http.StatusCreated, recorderChecking.Code, "should create checking account")
+		assert.Equal(t, http.StatusCreated, recorderChecking.Code, "should create checking account")
 
 		// --- ARRANGE 2: Prepare the "Credit Card" request ---
-		creditCardDTO := dto.CreateAccountRequest{
-			Name:           "Primary Credit Card",
-			Type:           model.CreditCard,
-			InitialBalance: decimal.NewFromInt(0),
+		creditCardDTO := dto.AccountRequest{
+			Name:                "Primary Credit Card",
+			Type:                model.CreditCard,
+			InitialBalance:      testhelper.Ptr(decimal.NewFromInt(0)),
+			CreditLimit:         testhelper.Ptr(decimal.NewFromFloat(1000.00)),
+			StatementClosingDay: testhelper.Ptr(20),
+			PaymentDueDay:       testhelper.Ptr(27),
 		}
 		creditCardBody, _ := json.Marshal(creditCardDTO)
 		reqCreditCard, _ := http.NewRequest("POST", "/v1/accounts", bytes.NewBuffer(creditCardBody))
@@ -450,7 +685,7 @@ func TestAccountRoutes(t *testing.T) {
 		testServer.router.ServeHTTP(recorderCreditCard, reqCreditCard)
 
 		// --- ASSERT 2: Verify the second creation was successful ---
-		require.Equal(http.StatusCreated, recorderCreditCard.Code, "should create credit card")
+		assert.Equal(t, http.StatusCreated, recorderCreditCard.Code, "should create credit card")
 
 		// Arrange
 		reqList, _ := http.NewRequest("GET", "/v1/accounts", nil)
@@ -461,7 +696,7 @@ func TestAccountRoutes(t *testing.T) {
 		testServer.router.ServeHTTP(recorderList, reqList)
 
 		// Assert
-		require.Equal(http.StatusOK, recorderList.Code)
+		assert.Equal(t, http.StatusOK, recorderList.Code)
 
 		var responseBody []dto.AccountResponse
 		err := json.Unmarshal(recorderList.Body.Bytes(), &responseBody)
@@ -476,11 +711,11 @@ func TestAccountRoutes(t *testing.T) {
 		for _, AccountResponse := range responseBody {
 			if AccountResponse.Name == "Checking Account" && AccountResponse.Type == model.Checking {
 				foundChecking = true
-				assert.True(t, decimal.NewFromInt(1000).Equal(AccountResponse.Balance))
+				assert.True(t, decimal.NewFromInt(1000).Equal(*AccountResponse.Balance))
 			}
 			if AccountResponse.Name == "Primary Credit Card" && AccountResponse.Type == model.CreditCard {
 				foundCreditCard = true
-				assert.True(t, decimal.NewFromInt(0).Equal(AccountResponse.Balance))
+				assert.True(t, decimal.NewFromInt(0).Equal(*AccountResponse.Balance))
 			}
 		}
 
@@ -503,7 +738,7 @@ func TestAccountRoutes(t *testing.T) {
 		testServer.router.ServeHTTP(recorder, req)
 
 		// Assert
-		require.Equal(http.StatusBadRequest, recorder.Code)
+		assert.Equal(t, http.StatusBadRequest, recorder.Code)
 	})
 	t.Run("delete account without transactions", func(t *testing.T) {
 		userId, _ := userRepo.Create(ctx, model.User{Name: "DeleteAccountWitoutTransactions", Email: "deleteAccountWitoutTransactions@test.com", PasswordHash: "hash"})
@@ -516,9 +751,9 @@ func TestAccountRoutes(t *testing.T) {
 
 		recorder := httptest.NewRecorder()
 		testServer.router.ServeHTTP(recorder, req)
-		require.Equal(http.StatusCreated, recorder.Code)
+		assert.Equal(t, http.StatusCreated, recorder.Code)
 
-		var createAccountResp dto.CreateAccountResponse
+		var createAccountResp dto.AccountResponse
 		_ = json.Unmarshal(recorder.Body.Bytes(), &createAccountResp)
 		accountId := createAccountResp.Id
 		require.NotZero(accountId)
@@ -528,7 +763,7 @@ func TestAccountRoutes(t *testing.T) {
 		req.Header.Set("Authorization", "Bearer "+token)
 		recorder = httptest.NewRecorder()
 		testServer.router.ServeHTTP(recorder, req)
-		require.Equal(http.StatusNoContent, recorder.Code)
+		assert.Equal(t, http.StatusNoContent, recorder.Code)
 
 	})
 	t.Run("delete account with transactions", func(t *testing.T) {
@@ -542,9 +777,9 @@ func TestAccountRoutes(t *testing.T) {
 
 		recorder := httptest.NewRecorder()
 		testServer.router.ServeHTTP(recorder, req)
-		require.Equal(http.StatusCreated, recorder.Code)
+		assert.Equal(t, http.StatusCreated, recorder.Code)
 
-		var createAccountResp dto.CreateAccountResponse
+		var createAccountResp dto.AccountResponse
 		_ = json.Unmarshal(recorder.Body.Bytes(), &createAccountResp)
 		accountId := createAccountResp.Id
 		require.NotZero(accountId)
@@ -562,7 +797,7 @@ func TestAccountRoutes(t *testing.T) {
 			req.Header.Set("Content-Type", "application/json")
 			recorder = httptest.NewRecorder()
 			testServer.router.ServeHTTP(recorder, req)
-			require.Equal(http.StatusCreated, recorder.Code)
+			assert.Equal(t, http.StatusCreated, recorder.Code)
 
 			var txResp map[string]int64
 			_ = json.Unmarshal(recorder.Body.Bytes(), &txResp)
@@ -575,17 +810,17 @@ func TestAccountRoutes(t *testing.T) {
 		req.Header.Set("Authorization", "Bearer "+token)
 		recorder = httptest.NewRecorder()
 		testServer.router.ServeHTTP(recorder, req)
-		require.Equal(http.StatusNoContent, recorder.Code)
+		assert.Equal(t, http.StatusNoContent, recorder.Code)
 
 	})
 	t.Run("update an account name successfully", func(t *testing.T) {
 		userId, _ := userRepo.Create(ctx, model.User{Name: "MultipleAccounts", Email: "multiAccounts@test.com", PasswordHash: "hash"})
 		token := testhelper.GenerateTestToken(t, userId, testServer.config.JWTSecretKey)
 
-		accountDTO := dto.CreateAccountRequest{
+		accountDTO := dto.AccountRequest{
 			Name:           "My API Test Account",
 			Type:           model.Checking,
-			InitialBalance: decimal.NewFromInt(100),
+			InitialBalance: testhelper.Ptr(decimal.NewFromInt(100)),
 		}
 		body, _ := json.Marshal(accountDTO)
 
@@ -597,19 +832,19 @@ func TestAccountRoutes(t *testing.T) {
 
 		testServer.router.ServeHTTP(recorder, req)
 
-		require.Equal(http.StatusCreated, recorder.Code)
+		assert.Equal(t, http.StatusCreated, recorder.Code)
 
-		var responseBody dto.CreateAccountResponse
+		var responseBody dto.AccountResponse
 		err := json.Unmarshal(recorder.Body.Bytes(), &responseBody)
 		require.NoError(err)
 
 		accountId := responseBody.Id
 		require.NotZero(accountId)
 
-		updateDTO := dto.UpdateAccountRequest{
+		updateDTO := dto.AccountRequest{
 			Name:           "User A Main Account",
 			Type:           model.Checking,
-			InitialBalance: decimal.NewFromInt(0),
+			InitialBalance: testhelper.Ptr(decimal.NewFromInt(1000)),
 		}
 		body, _ = json.Marshal(updateDTO)
 		req, _ = http.NewRequest("PUT", fmt.Sprintf("/v1/accounts/%d", accountId), bytes.NewBuffer(body))
@@ -619,7 +854,7 @@ func TestAccountRoutes(t *testing.T) {
 
 		testServer.router.ServeHTTP(recorder, req)
 
-		require.Equal(http.StatusOK, recorder.Code)
+		assert.Equal(t, http.StatusOK, recorder.Code)
 		var resp dto.AccountResponse
 		_ = json.Unmarshal(recorder.Body.Bytes(), &resp)
 		assert.Equal(t, "User A Main Account", resp.Name)
@@ -636,7 +871,7 @@ func TestAccountRoutes(t *testing.T) {
 
 		testServer.router.ServeHTTP(recorder, req)
 
-		require.Equal(http.StatusOK, recorder.Code)
+		assert.Equal(t, http.StatusOK, recorder.Code)
 		var resp []dto.AccountResponse
 		_ = json.Unmarshal(recorder.Body.Bytes(), &resp)
 
@@ -649,10 +884,10 @@ func TestAccountRoutes(t *testing.T) {
 		userId, _ := userRepo.Create(ctx, model.User{Name: "DuplicateAccountSameUser", Email: "duplicateAccountSameUser@test.com", PasswordHash: "hash"})
 		token := testhelper.GenerateTestToken(t, userId, testServer.config.JWTSecretKey)
 
-		firstAccount := dto.CreateAccountRequest{
+		firstAccount := dto.AccountRequest{
 			Name:           name,
 			Type:           model.Checking,
-			InitialBalance: decimal.NewFromInt(1000),
+			InitialBalance: testhelper.Ptr(decimal.NewFromInt(1000)),
 		}
 		firstAccountBody, _ := json.Marshal(firstAccount)
 		requeFirstAccount, _ := http.NewRequest("POST", "/v1/accounts", bytes.NewBuffer(firstAccountBody))
@@ -662,12 +897,15 @@ func TestAccountRoutes(t *testing.T) {
 
 		testServer.router.ServeHTTP(recorderFisrtAccount, requeFirstAccount)
 
-		require.Equal(http.StatusCreated, recorderFisrtAccount.Code)
+		assert.Equal(t, http.StatusCreated, recorderFisrtAccount.Code)
 
-		secondAccount := dto.CreateAccountRequest{
-			Name:           name,
-			Type:           model.CreditCard,
-			InitialBalance: decimal.NewFromInt(0),
+		secondAccount := dto.AccountRequest{
+			Name:                name,
+			Type:                model.CreditCard,
+			InitialBalance:      testhelper.Ptr(decimal.NewFromInt(0)),
+			CreditLimit:         testhelper.Ptr(decimal.NewFromFloat(1000.00)),
+			StatementClosingDay: testhelper.Ptr(20),
+			PaymentDueDay:       testhelper.Ptr(27),
 		}
 		secondAccountBody, _ := json.Marshal(secondAccount)
 		reqSecondAccount, _ := http.NewRequest("POST", "/v1/accounts", bytes.NewBuffer(secondAccountBody))
@@ -677,84 +915,76 @@ func TestAccountRoutes(t *testing.T) {
 
 		testServer.router.ServeHTTP(recorderSecondAccount, reqSecondAccount)
 
-		// --- ASSERT 2: Verify the second creation was successful ---
-		require.Equal(http.StatusBadRequest, recorderSecondAccount.Code)
+		assert.Equal(t, http.StatusConflict, recorderSecondAccount.Code)
 
 		var errorResponse dto.ErrorResponse
 		err := json.Unmarshal(recorderSecondAccount.Body.Bytes(), &errorResponse)
 		require.NoError(err)
 
-		require.Contains(errorResponse.Error, "an account with this name already exists")
+		require.Contains(errorResponse.Error, "account with this name already exists")
+	})
+	t.Run("get credit card statement", func(t *testing.T) {
+		userId, _ := userRepo.Create(ctx, model.User{Name: "CC Statement API User", Email: "cc-statement-api@test.com", PasswordHash: "hash"})
+		token := testhelper.GenerateTestToken(t, userId, testServer.config.JWTSecretKey)
+
+		// Create a credit card account with a closing day of the 20th
+		accountRepo := repository.NewAccountRepository(testServer.db)
+		closingDay, dueDate := 20, 10
+		creditCardId, _ := accountRepo.Create(ctx, model.Account{
+			UserId:              userId,
+			Name:                "My Test Credit Card",
+			Type:                model.CreditCard,
+			StatementClosingDay: &closingDay,
+			PaymentDueDay:       &dueDate,
+		})
+
+		// Create transactions in different billing cycles
+		txRepo := repository.NewTransactionRepository(testServer.db)
+		// This transaction belongs to the PREVIOUS statement (due in May)
+		_, _ = txRepo.Create(ctx, model.Transaction{UserId: userId, AccountId: creditCardId, Description: "Old Purchase", Amount: decimal.NewFromInt(1000), Type: "expense", Date: time.Date(2025, 5, 15, 12, 0, 0, 0, time.UTC)})
+		// These two transactions belong to the CURRENT statement (due in June)
+		_, _ = txRepo.Create(ctx, model.Transaction{UserId: userId, AccountId: creditCardId, Description: "Grocery Shopping", Amount: decimal.NewFromFloat(250.50), Type: "expense", Date: time.Date(2025, 5, 25, 12, 0, 0, 0, time.UTC)})
+		_, _ = txRepo.Create(ctx, model.Transaction{UserId: userId, AccountId: creditCardId, Description: "Dinner Out", Amount: decimal.NewFromFloat(150.00), Type: "expense", Date: time.Date(2025, 6, 10, 12, 0, 0, 0, time.UTC)})
+		// This transaction belongs to the NEXT statement (due in July)
+		_, _ = txRepo.Create(ctx, model.Transaction{UserId: userId, AccountId: creditCardId, Description: "Future Purchase", Amount: decimal.NewFromInt(50), Type: "expense", Date: time.Date(2025, 6, 25, 12, 0, 0, 0, time.UTC)})
+
+		// --- ACT ---
+		// We ask for the statement for June (month 6) 2025.
+		// The backend should calculate the period from May 20st to June 20th.
+		url := fmt.Sprintf("/v1/accounts/%d/statement?month=6&year=2025", creditCardId)
+		req, _ := http.NewRequest("GET", url, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		recorder := httptest.NewRecorder()
+
+		testServer.router.ServeHTTP(recorder, req)
+
+		// --- ASSERT ---
+		assert.Equal(t, http.StatusOK, recorder.Code)
+
+		var resp dto.StatementResponse
+		err := json.Unmarshal(recorder.Body.Bytes(), &resp)
+		require.NoError(err)
+
+		// Check the calculated total
+		expectedTotal := decimal.NewFromFloat(400.50) // 250.50 + 150.00
+		assert.True(t, expectedTotal.Equal(resp.StatementTotal), "statement total should be calculated correctly")
+
+		// Check that only the correct transactions were included
+		assert.Len(t, resp.Transactions, 2, "should only be two transactions in this statement")
+
+		// Check the details of the included transactions
+		var descriptions []string
+		for _, tx := range resp.Transactions {
+			descriptions = append(descriptions, tx.Description)
+		}
+		assert.Contains(t, descriptions, "Grocery Shopping")
+		assert.Contains(t, descriptions, "Dinner Out")
+		assert.NotContains(t, descriptions, "Old Purchase")
+		assert.NotContains(t, descriptions, "Future Purchase")
+
 	})
 }
 
-func TestCreditCardStatementAPI(t *testing.T) {
-	// --- ARRANGE ---
-	require := require.New(t)
-	gin.SetMode(gin.TestMode)
-
-	testhelper.TruncateTables(t, testServer.db)
-
-	ctx := context.Background()
-	userRepo := repository.NewUserRepository(testServer.db)
-	userId, _ := userRepo.Create(ctx, model.User{Name: "CC API User", Email: "cc-api@test.com", PasswordHash: "hash"})
-	token := testhelper.GenerateTestToken(t, userId, testServer.config.JWTSecretKey)
-
-	// Create a credit card account with a closing day of the 20th
-	accountRepo := repository.NewAccountRepository(testServer.db)
-	closingDay, dueDate := 20, 10
-	creditCardId, _ := accountRepo.Create(ctx, model.Account{
-		UserId:              userId,
-		Name:                "My Test Credit Card",
-		Type:                model.CreditCard,
-		StatementClosingDay: &closingDay,
-		PaymentDueDay:       &dueDate,
-	})
-
-	// Create transactions in different billing cycles
-	txRepo := repository.NewTransactionRepository(testServer.db)
-	// This transaction belongs to the PREVIOUS statement (due in May)
-	_, _ = txRepo.Create(ctx, model.Transaction{UserId: userId, AccountId: creditCardId, Description: "Old Purchase", Amount: decimal.NewFromInt(1000), Type: "expense", Date: time.Date(2025, 5, 15, 12, 0, 0, 0, time.UTC)})
-	// These two transactions belong to the CURRENT statement (due in June)
-	_, _ = txRepo.Create(ctx, model.Transaction{UserId: userId, AccountId: creditCardId, Description: "Grocery Shopping", Amount: decimal.NewFromFloat(250.50), Type: "expense", Date: time.Date(2025, 5, 25, 12, 0, 0, 0, time.UTC)})
-	_, _ = txRepo.Create(ctx, model.Transaction{UserId: userId, AccountId: creditCardId, Description: "Dinner Out", Amount: decimal.NewFromFloat(150.00), Type: "expense", Date: time.Date(2025, 6, 10, 12, 0, 0, 0, time.UTC)})
-	// This transaction belongs to the NEXT statement (due in July)
-	_, _ = txRepo.Create(ctx, model.Transaction{UserId: userId, AccountId: creditCardId, Description: "Future Purchase", Amount: decimal.NewFromInt(50), Type: "expense", Date: time.Date(2025, 6, 25, 12, 0, 0, 0, time.UTC)})
-
-	// --- ACT ---
-	// We ask for the statement for June (month 6) 2025.
-	// The backend should calculate the period from May 20st to June 20th.
-	url := fmt.Sprintf("/v1/accounts/%d/statement?month=6&year=2025", creditCardId)
-	req, _ := http.NewRequest("GET", url, nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-	recorder := httptest.NewRecorder()
-
-	testServer.router.ServeHTTP(recorder, req)
-
-	// --- ASSERT ---
-	require.Equal(http.StatusOK, recorder.Code)
-
-	var resp dto.StatementResponse
-	err := json.Unmarshal(recorder.Body.Bytes(), &resp)
-	require.NoError(err)
-
-	// Check the calculated total
-	expectedTotal := decimal.NewFromFloat(400.50) // 250.50 + 150.00
-	assert.True(t, expectedTotal.Equal(resp.StatementTotal), "statement total should be calculated correctly")
-
-	// Check that only the correct transactions were included
-	assert.Len(t, resp.Transactions, 2, "should only be two transactions in this statement")
-
-	// Check the details of the included transactions
-	var descriptions []string
-	for _, tx := range resp.Transactions {
-		descriptions = append(descriptions, tx.Description)
-	}
-	assert.Contains(t, descriptions, "Grocery Shopping")
-	assert.Contains(t, descriptions, "Dinner Out")
-	assert.NotContains(t, descriptions, "Old Purchase")
-	assert.NotContains(t, descriptions, "Future Purchase")
-}
 func TestTransactionRoutes(t *testing.T) {
 	require := require.New(t)
 	gin.SetMode(gin.TestMode)
@@ -783,7 +1013,7 @@ func TestTransactionRoutes(t *testing.T) {
 			expenseDTO := dto.CreateTransactionRequest{
 				Description: "Groceries",
 				Amount:      decimal.NewFromFloat(75.50),
-				Date:        time.Now(),
+				Date:        time.Now().UTC(),
 				Type:        model.Expense,
 				AccountId:   checkingAccountId,
 				CategoryId:  &foodCategoryId,
@@ -798,7 +1028,7 @@ func TestTransactionRoutes(t *testing.T) {
 			testServer.router.ServeHTTP(recorder, req)
 
 			// Assert
-			require.Equal(http.StatusCreated, recorder.Code)
+			assert.Equal(t, http.StatusCreated, recorder.Code)
 			var resp dto.TransactionResponse
 			err := json.Unmarshal(recorder.Body.Bytes(), &resp)
 			require.NoError(err)
@@ -814,7 +1044,7 @@ func TestTransactionRoutes(t *testing.T) {
 			transferDTO := dto.CreateTransactionRequest{
 				Description:          "Move to savings",
 				Amount:               decimal.NewFromInt(500),
-				Date:                 time.Now(),
+				Date:                 time.Now().UTC(),
 				Type:                 model.Transfer,
 				AccountId:            checkingAccountId,
 				DestinationAccountId: &savingsAccountId,
@@ -829,7 +1059,7 @@ func TestTransactionRoutes(t *testing.T) {
 			testServer.router.ServeHTTP(recorder, req)
 
 			// Assert
-			require.Equal(http.StatusCreated, recorder.Code)
+			assert.Equal(t, http.StatusCreated, recorder.Code)
 		})
 
 		t.Run("should fail with 400 Bad Request if destination account is missing for a transfer", func(t *testing.T) {
@@ -837,7 +1067,7 @@ func TestTransactionRoutes(t *testing.T) {
 			invalidTransferDTO := dto.CreateTransactionRequest{
 				Description: "Invalid Transfer",
 				Amount:      decimal.NewFromInt(100),
-				Date:        time.Now(),
+				Date:        time.Now().UTC(),
 				Type:        model.Transfer,
 				AccountId:   checkingAccountId,
 				// DestinationAccountId is missing
@@ -852,7 +1082,7 @@ func TestTransactionRoutes(t *testing.T) {
 			testServer.router.ServeHTTP(recorder, req)
 
 			// Assert
-			require.Equal(http.StatusBadRequest, recorder.Code)
+			assert.Equal(t, http.StatusBadRequest, recorder.Code)
 			assert.Contains(t, recorder.Body.String(), "destination account is required for a transfer")
 		})
 	})
@@ -866,7 +1096,7 @@ func TestTransactionRoutes(t *testing.T) {
 			require.NoError(err)
 
 			// Assert
-			require.Equal(http.StatusOK, respRecorder.Code)
+			assert.Equal(t, http.StatusOK, respRecorder.Code)
 			assert.Len(t, transactions, 1, "should have the correct number of transactions")
 		})
 		t.Run("should get no transaction by wrong filter value", func(t *testing.T) {
@@ -877,7 +1107,7 @@ func TestTransactionRoutes(t *testing.T) {
 			require.NoError(err)
 
 			// Assert
-			require.Equal(http.StatusOK, respRecorder.Code)
+			assert.Equal(t, http.StatusOK, respRecorder.Code)
 			assert.Len(t, transactions, 0, "should have the correct number of transactions")
 		})
 		t.Run("should get transactions ignoring wrong filter key", func(t *testing.T) {
@@ -888,7 +1118,7 @@ func TestTransactionRoutes(t *testing.T) {
 			require.NoError(err)
 
 			// Assert
-			require.Equal(http.StatusOK, respRecorder.Code)
+			assert.Equal(t, http.StatusOK, respRecorder.Code)
 			assert.Len(t, transactions, 2, "should have the correct number of transactions")
 		})
 
@@ -907,7 +1137,7 @@ func TestTransactionRoutes(t *testing.T) {
 			testServer.router.ServeHTTP(recorder, req)
 
 			// Assert
-			require.Equal(http.StatusOK, recorder.Code)
+			assert.Equal(t, http.StatusOK, recorder.Code)
 			var resp dto.TransactionResponse
 			err := json.Unmarshal(recorder.Body.Bytes(), &resp)
 			require.NoError(err)
@@ -937,7 +1167,7 @@ func TestTransactionRoutes(t *testing.T) {
 			testServer.router.ServeHTTP(recorder, req)
 
 			// Assert
-			require.Equal(http.StatusOK, recorder.Code)
+			assert.Equal(t, http.StatusOK, recorder.Code)
 			var resp dto.TransactionResponse
 			err := json.Unmarshal(recorder.Body.Bytes(), &resp)
 			require.NoError(err)
@@ -952,7 +1182,11 @@ func TestTransactionRoutes(t *testing.T) {
 		// Create a new user and account for this test
 		userId, _ := userRepo.Create(ctx, model.User{Name: "Update User", Email: "update@test.com", PasswordHash: "hash"})
 		token := testhelper.GenerateTestToken(t, userId, testServer.config.JWTSecretKey)
-		accountId := testhelper.CreateAccount(t, testServer.router, token, "Account for Update Test", "checking", decimal.NewFromInt(1000))
+		accountId := testhelper.CreateAccount(t, testServer.router, token, dto.AccountRequest{
+			Name:           "Account for Update Test",
+			Type:           model.Checking,
+			InitialBalance: testhelper.Ptr(decimal.NewFromInt(1000)),
+		})
 
 		// Create the initial transaction that we are going to update
 		initialDescription := "Initial Dinner"
@@ -963,7 +1197,7 @@ func TestTransactionRoutes(t *testing.T) {
 		updateDTO := dto.UpdateTransactionRequest{
 			Description: "Updated Dinner with Friends",
 			Amount:      decimal.NewFromFloat(65.50),
-			Date:        time.Now(),
+			Date:        time.Now().UTC(),
 			Type:        model.Expense,
 			AccountId:   accountId,
 			CategoryId:  nil, // Not changing the category
@@ -982,14 +1216,14 @@ func TestTransactionRoutes(t *testing.T) {
 		testServer.router.ServeHTTP(recorder, req)
 
 		// ASSERT 1: Check the immediate response from the PUT request
-		require.Equal(http.StatusOK, recorder.Code, "the update request should succeed")
+		assert.Equal(t, http.StatusOK, recorder.Code, "the update request should succeed")
 
 		var updateResponse dto.TransactionResponse
 		err := json.Unmarshal(recorder.Body.Bytes(), &updateResponse)
 		require.NoError(err)
 
 		// Verify the response body contains the updated data
-		require.Equal("Updated Dinner with Friends", updateResponse.Description)
+		assert.Equal(t, "Updated Dinner with Friends", updateResponse.Description)
 		require.True(decimal.NewFromFloat(65.50).Equal(updateResponse.Amount), "the amount in the response should be updated")
 
 		// FINAL VERIFICATION: Fetch the resource again to ensure the change was persisted
@@ -1002,12 +1236,12 @@ func TestTransactionRoutes(t *testing.T) {
 		testServer.router.ServeHTTP(getRecorder, getReq)
 
 		// Assert for GET
-		require.Equal(http.StatusOK, getRecorder.Code)
+		assert.Equal(t, http.StatusOK, getRecorder.Code)
 		var finalResponse dto.TransactionResponse
 		err = json.Unmarshal(getRecorder.Body.Bytes(), &finalResponse)
 		require.NoError(err)
 
-		require.Equal("Updated Dinner with Friends", finalResponse.Description, "the persisted description should be updated")
+		assert.Equal(t, "Updated Dinner with Friends", finalResponse.Description, "the persisted description should be updated")
 		require.True(decimal.NewFromFloat(65.50).Equal(finalResponse.Amount), "the persisted amount should be updated")
 	})
 	t.Run("Creation Transaction", func(t *testing.T) {
@@ -1017,7 +1251,11 @@ func TestTransactionRoutes(t *testing.T) {
 			token := testhelper.GenerateTestToken(t, userId, testServer.config.JWTSecretKey)
 
 			// Arrange: Create an account with an initial balance of $1000
-			accountId := testhelper.CreateAccount(t, testServer.router, token, "Account for Balance Test", "checking", decimal.NewFromInt(1000.00))
+			accountId := testhelper.CreateAccount(t, testServer.router, token, dto.AccountRequest{
+				Name:           "Account for Balance Test",
+				Type:           model.Checking,
+				InitialBalance: testhelper.Ptr(decimal.NewFromInt(1000)),
+			})
 
 			// Act 1: Add an income of $5000
 			testhelper.CreateTransaction(t, testServer.router, token, accountId, "Monthly Salary", "income", "5000.00")
@@ -1035,19 +1273,23 @@ func TestTransactionRoutes(t *testing.T) {
 			userId, err := userRepo.Create(ctx, model.User{Name: "Test User", Email: "invalidamount@test.com", PasswordHash: "hash"})
 			require.NoError(err)
 			token := testhelper.GenerateTestToken(t, userId, testServer.config.JWTSecretKey)
-			accountId := testhelper.CreateAccount(t, testServer.router, token, "Invalid Amount Account", "checking", decimal.NewFromInt(100))
+			accountId := testhelper.CreateAccount(t, testServer.router, token, dto.AccountRequest{
+				Name:           "Invalid Amount Account",
+				Type:           model.Checking,
+				InitialBalance: testhelper.Ptr(decimal.NewFromInt(100)),
+			})
 
 			createTransactionReq := dto.CreateTransactionRequest{
 				Description: "Zero Amount",
 				Amount:      decimal.NewFromInt(0),
 				Type:        model.Expense,
 				AccountId:   accountId,
-				Date:        time.Now(),
+				Date:        time.Now().UTC(),
 			}
 			body, _ := json.Marshal(createTransactionReq)
 			respRecorder := testhelper.MakeAPIRequest(t, testServer.router, "POST", "/v1/transactions", token, bytes.NewBuffer(body))
 
-			require.Equal(http.StatusBadRequest, respRecorder.Code)
+			assert.Equal(t, http.StatusBadRequest, respRecorder.Code)
 			assert.Contains(t, respRecorder.Body.String(), "transaction amount must be positive")
 		})
 		t.Run("non-existent source account", func(t *testing.T) {
@@ -1060,12 +1302,12 @@ func TestTransactionRoutes(t *testing.T) {
 				Amount:      decimal.NewFromInt(100),
 				Type:        model.Expense,
 				AccountId:   9999999,
-				Date:        time.Now(),
+				Date:        time.Now().UTC(),
 			}
 			body, _ := json.Marshal(createTransactionReq)
 			respRecorder := testhelper.MakeAPIRequest(t, testServer.router, "POST", "/v1/transactions", token, bytes.NewBuffer(body))
 
-			require.Equal(http.StatusBadRequest, respRecorder.Code)
+			assert.Equal(t, http.StatusBadRequest, respRecorder.Code)
 			assert.Contains(t, respRecorder.Body.String(), "source account not found")
 		})
 	})
@@ -1076,8 +1318,16 @@ func TestTransactionRoutes(t *testing.T) {
 			token := testhelper.GenerateTestToken(t, userId, testServer.config.JWTSecretKey)
 
 			// Arrange
-			sourceAccountId := testhelper.CreateAccount(t, testServer.router, token, "Source Account", "checking", decimal.NewFromInt(1000.00))
-			destAccountId := testhelper.CreateAccount(t, testServer.router, token, "Destination Account", "savings", decimal.NewFromInt(500.00))
+			sourceAccountId := testhelper.CreateAccount(t, testServer.router, token, dto.AccountRequest{
+				Name:           "Source Account",
+				Type:           model.Checking,
+				InitialBalance: testhelper.Ptr(decimal.NewFromInt(1000.00)),
+			})
+			destAccountId := testhelper.CreateAccount(t, testServer.router, token, dto.AccountRequest{
+				Name:           "Destination Account",
+				Type:           model.Savings,
+				InitialBalance: testhelper.Ptr(decimal.NewFromInt(500.00)),
+			})
 
 			// Act: Transfer $200 from source to destination
 			testhelper.CreateTransfer(t, testServer.router, token, "Saving money", "200.00", sourceAccountId, destAccountId)
@@ -1094,7 +1344,11 @@ func TestTransactionRoutes(t *testing.T) {
 			require.NoError(err)
 			token := testhelper.GenerateTestToken(t, userId, testServer.config.JWTSecretKey)
 
-			accountId := testhelper.CreateAccount(t, testServer.router, token, "Same-Transfer Account", "checking", decimal.NewFromInt(1000))
+			accountId := testhelper.CreateAccount(t, testServer.router, token, dto.AccountRequest{
+				Name:           "Same-Transfer Account",
+				Type:           model.Checking,
+				InitialBalance: testhelper.Ptr(decimal.NewFromInt(1000)),
+			})
 
 			createTransactionReq := dto.CreateTransactionRequest{
 				Description:          "Invalid",
@@ -1102,12 +1356,12 @@ func TestTransactionRoutes(t *testing.T) {
 				Type:                 model.Transfer,
 				AccountId:            accountId,
 				DestinationAccountId: &accountId,
-				Date:                 time.Now(),
+				Date:                 time.Now().UTC(),
 			}
 			body, _ := json.Marshal(createTransactionReq)
 			respRecorder := testhelper.MakeAPIRequest(t, testServer.router, "POST", "/v1/transactions", token, bytes.NewBuffer(body))
 
-			require.Equal(http.StatusBadRequest, respRecorder.Code)
+			assert.Equal(t, http.StatusBadRequest, respRecorder.Code)
 			assert.Contains(t, respRecorder.Body.String(), "source and destination accounts cannot be the same")
 		})
 		t.Run("non-existent destination account", func(t *testing.T) {
@@ -1115,7 +1369,11 @@ func TestTransactionRoutes(t *testing.T) {
 			require.NoError(err)
 			token := testhelper.GenerateTestToken(t, userId, testServer.config.JWTSecretKey)
 
-			sourceAccountId := testhelper.CreateAccount(t, testServer.router, token, "No-Dest Source", "checking", decimal.NewFromInt(1000))
+			sourceAccountId := testhelper.CreateAccount(t, testServer.router, token, dto.AccountRequest{
+				Name:           "No-Dest Source",
+				Type:           model.Checking,
+				InitialBalance: testhelper.Ptr(decimal.NewFromInt(1000)),
+			})
 			invalidDestinationAccountId := int64(9999999)
 
 			createTransactionReq := dto.CreateTransactionRequest{
@@ -1124,12 +1382,12 @@ func TestTransactionRoutes(t *testing.T) {
 				Type:                 model.Transfer,
 				DestinationAccountId: &invalidDestinationAccountId,
 				AccountId:            sourceAccountId,
-				Date:                 time.Now(),
+				Date:                 time.Now().UTC(),
 			}
 			body, _ := json.Marshal(createTransactionReq)
 			respRecorder := testhelper.MakeAPIRequest(t, testServer.router, "POST", "/v1/transactions", token, bytes.NewBuffer(body))
 
-			require.Equal(http.StatusBadRequest, respRecorder.Code)
+			assert.Equal(t, http.StatusBadRequest, respRecorder.Code)
 			assert.Contains(t, respRecorder.Body.String(), "destination account not found")
 		})
 		t.Run("destination account not informed", func(t *testing.T) {
@@ -1137,20 +1395,24 @@ func TestTransactionRoutes(t *testing.T) {
 			require.NoError(err)
 			token := testhelper.GenerateTestToken(t, userId, testServer.config.JWTSecretKey)
 
-			sourceAccountId := testhelper.CreateAccount(t, testServer.router, token, "No-Dest Source", "checking", decimal.NewFromInt(1000))
+			sourceAccountId := testhelper.CreateAccount(t, testServer.router, token, dto.AccountRequest{
+				Name:           "No-Dest Source",
+				Type:           model.Checking,
+				InitialBalance: testhelper.Ptr(decimal.NewFromInt(1000)),
+			})
 
 			createTransactionReq := dto.CreateTransactionRequest{
 				Description:          "Ghost Transaction",
 				Amount:               decimal.NewFromInt(100),
 				Type:                 model.Transfer,
 				AccountId:            sourceAccountId,
-				Date:                 time.Now(),
+				Date:                 time.Now().UTC(),
 				DestinationAccountId: nil,
 			}
 			body, _ := json.Marshal(createTransactionReq)
 			respRecorder := testhelper.MakeAPIRequest(t, testServer.router, "POST", "/v1/transactions", token, bytes.NewBuffer(body))
 
-			require.Equal(http.StatusBadRequest, respRecorder.Code)
+			assert.Equal(t, http.StatusBadRequest, respRecorder.Code)
 			assert.Contains(t, respRecorder.Body.String(), "destination account is required for a transfer")
 		})
 	})
@@ -1165,7 +1427,6 @@ func TestBudgetRoutes(t *testing.T) {
 
 	ctx := context.Background()
 	categoryRepo := repository.NewCategoryRepository(testServer.db)
-	accountRepo := repository.NewAccountRepository(testServer.db)
 
 	t.Run("should create and list budgets with calculated spending", func(t *testing.T) {
 		testhelper.TruncateTables(t, testServer.db)
@@ -1175,11 +1436,16 @@ func TestBudgetRoutes(t *testing.T) {
 		userId, _ := userRepo.Create(ctx, model.User{Name: "Budget API User", Email: "budgetapi@test.com", PasswordHash: "hash"})
 		token := testhelper.GenerateTestToken(t, userId, testServer.config.JWTSecretKey)
 
-		checkingId, _ := accountRepo.Create(ctx, model.Account{UserId: userId, Name: "Checking", Type: "checking"})
-		foodCatId, _ := categoryRepo.Create(ctx, model.Category{UserId: userId, Name: "Food", Type: "expense"})
+		checkingId := testhelper.CreateAccount(t, testServer.router, token, dto.AccountRequest{
+			Name:           "Checking Account",
+			Type:           model.Checking,
+			InitialBalance: testhelper.Ptr(decimal.NewFromInt(0)),
+		})
+		foodCatId, err := categoryRepo.Create(ctx, model.Category{UserId: userId, Name: "Food", Type: "expense"})
+		assert.NoError(t, err)
 
 		// Act 1: Create a budget for Food for the current month
-		now := time.Now()
+		now := time.Now().UTC()
 		createDTO := dto.CreateBudgetRequest{
 			CategoryId: foodCatId,
 			Amount:     decimal.NewFromInt(500),
@@ -1188,7 +1454,7 @@ func TestBudgetRoutes(t *testing.T) {
 		}
 		createBody, _ := json.Marshal(createDTO)
 		recorderCreate := testhelper.MakeAPIRequest(t, testServer.router, "POST", "/v1/budgets", token, bytes.NewBuffer(createBody))
-		require.Equal(http.StatusCreated, recorderCreate.Code)
+		assert.Equal(t, http.StatusCreated, recorderCreate.Code)
 
 		// Arrange 2: Create some expense transactions in that category for the period
 		txRepo := repository.NewTransactionRepository(testServer.db)
@@ -1199,10 +1465,10 @@ func TestBudgetRoutes(t *testing.T) {
 		recorderList := testhelper.MakeAPIRequest(t, testServer.router, "GET", "/v1/budgets", token, nil)
 
 		// Assert
-		require.Equal(http.StatusOK, recorderList.Code)
+		assert.Equal(t, http.StatusOK, recorderList.Code)
 
 		var resp []dto.BudgetResponse
-		err := json.Unmarshal(recorderList.Body.Bytes(), &resp)
+		err = json.Unmarshal(recorderList.Body.Bytes(), &resp)
 		require.NoError(err)
 
 		require.Len(resp, 1, "should be one budget")
@@ -1211,7 +1477,7 @@ func TestBudgetRoutes(t *testing.T) {
 		expectedSpent := decimal.NewFromFloat(200.50)   // 120.50 + 80.00
 		expectedBalance := decimal.NewFromFloat(299.50) // 500.00 - 200.50
 
-		require.Equal("Food", foodBudget.CategoryName)
+		assert.Equal(t, "Food", foodBudget.CategoryName)
 		require.True(decimal.NewFromInt(500).Equal(foodBudget.Amount), "budgeted amount should be correct")
 		require.True(expectedSpent.Equal(foodBudget.SpentAmount), "spent amount should be calculated correctly")
 		require.True(expectedBalance.Equal(foodBudget.Balance), "remaining balance should be calculated correctly")
@@ -1234,7 +1500,11 @@ func TestBusinessScenarios(t *testing.T) {
 		// Arrange 1: Create a user and an account with an initial balance.
 		userId, _ := userRepo.Create(ctx, model.User{Name: "Correction User", Email: "correction@test.com", PasswordHash: "hash"})
 		token := testhelper.GenerateTestToken(t, userId, testServer.config.JWTSecretKey)
-		accountId := testhelper.CreateAccount(t, testServer.router, token, "Checking Account", "checking", decimal.NewFromInt(500))
+		accountId := testhelper.CreateAccount(t, testServer.router, token, dto.AccountRequest{
+			Name:           "Checking Account",
+			Type:           model.Checking,
+			InitialBalance: testhelper.Ptr(decimal.NewFromInt(500)),
+		})
 
 		// Assert 1: Initial balance is correct.
 		balance := testhelper.GetAccountBalance(t, testServer.router, token, accountId)
@@ -1245,14 +1515,14 @@ func TestBusinessScenarios(t *testing.T) {
 
 		// Assert 2: Balance is updated correctly after creation.
 		balance = testhelper.GetAccountBalance(t, testServer.router, token, accountId)
-		require.Equal(decimal.NewFromInt(400), balance, "Balance should be 400 after $100 expense")
+		assert.Equal(t, decimal.NewFromInt(400), balance, "Balance should be 400 after $100 expense")
 
 		// Act 2: Edit the expense to the correct amount of $80.
 		testhelper.UpdateTransaction(t, testServer.router, token, expenseId, accountId, "Dinner (Corrected)", "expense", "80.00")
 
 		// Assert 3: Balance is recalculated correctly after update.
 		balance = testhelper.GetAccountBalance(t, testServer.router, token, accountId)
-		require.Equal(decimal.NewFromInt(420), balance, "Balance should be $420 after correction to $80")
+		assert.Equal(t, decimal.NewFromInt(420), balance, "Balance should be $420 after correction to $80")
 
 		// Act 3: Delete the expense entirely.
 		testhelper.DeleteTransaction(t, testServer.router, token, expenseId)
@@ -1269,8 +1539,19 @@ func TestBusinessScenarios(t *testing.T) {
 		// Arrange: Create user, a checking account with $2000, and a credit card with $0.
 		userId, _ := userRepo.Create(ctx, model.User{Name: "Payment User", Email: "payment@test.com", PasswordHash: "hash"})
 		token := testhelper.GenerateTestToken(t, userId, testServer.config.JWTSecretKey)
-		checkingId := testhelper.CreateAccount(t, testServer.router, token, "My Checking", "checking", decimal.NewFromInt(2000))
-		creditCardId := testhelper.CreateAccount(t, testServer.router, token, "My Credit Card", "credit_card", decimal.NewFromInt(0))
+		checkingId := testhelper.CreateAccount(t, testServer.router, token, dto.AccountRequest{
+			Name:           "My Checking",
+			Type:           model.Checking,
+			InitialBalance: testhelper.Ptr(decimal.NewFromInt(2000)),
+		})
+		creditCardId := testhelper.CreateAccount(t, testServer.router, token, dto.AccountRequest{
+			Name:                "My Credit Card",
+			Type:                model.CreditCard,
+			InitialBalance:      testhelper.Ptr(decimal.NewFromInt(0)),
+			CreditLimit:         testhelper.Ptr(decimal.NewFromInt(1000)),
+			StatementClosingDay: testhelper.Ptr(28),
+			PaymentDueDay:       testhelper.Ptr(5),
+		})
 
 		// Arrange: Add $450 in expenses to the credit card.
 		testhelper.CreateTransaction(t, testServer.router, token, creditCardId, "Groceries", "expense", "150.00")
@@ -1296,8 +1577,16 @@ func TestBusinessScenarios(t *testing.T) {
 		userId, _ := userRepo.Create(ctx, model.User{Name: "Cascade User", Email: "cascade@test.com", PasswordHash: "hash"})
 		token := testhelper.GenerateTestToken(t, userId, testServer.config.JWTSecretKey)
 
-		accountToDeleteId := testhelper.CreateAccount(t, testServer.router, token, "Account To Delete", "checking", decimal.NewFromInt(100))
-		otherAccountId := testhelper.CreateAccount(t, testServer.router, token, "Other Account", "savings", decimal.NewFromInt(200))
+		accountToDeleteId := testhelper.CreateAccount(t, testServer.router, token, dto.AccountRequest{
+			Name:           "Account To Delete",
+			Type:           model.Checking,
+			InitialBalance: testhelper.Ptr(decimal.NewFromInt(100)),
+		})
+		otherAccountId := testhelper.CreateAccount(t, testServer.router, token, dto.AccountRequest{
+			Name:           "Other Account",
+			Type:           model.Savings,
+			InitialBalance: testhelper.Ptr(decimal.NewFromInt(200)),
+		})
 
 		tx1Id := testhelper.CreateTransaction(t, testServer.router, token, accountToDeleteId, "Expense from deleted account", "expense", "10")
 		tx2Id := testhelper.CreateTransfer(t, testServer.router, token, "Transfer from deleted account", "20", accountToDeleteId, otherAccountId)
